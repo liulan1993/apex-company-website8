@@ -1,12 +1,19 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, ChangeEvent, Dispatch, SetStateAction, FC } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 
+// --- 类型定义 ---
+type Option = { value: string; label: string };
+type Column = { key: string; header: string };
+type Field = { id: string; Component: FC<any>; label?: string; title?: string; [key: string]: any };
+type Service = { id: string; title: string; fields: Field[] };
+type FormData = { [key: string]: any };
+
 // --- 工具函数 ---
-function cn(...inputs: any[]) {
-    const classSet = new Set();
+function cn(...inputs: (string | undefined | null | boolean | { [key: string]: boolean })[]): string {
+    const classSet = new Set<string>();
     inputs.forEach(input => {
         if (typeof input === 'string') {
             input.split(' ').forEach(cls => cls && classSet.add(cls));
@@ -28,8 +35,7 @@ const SubHeader = ({ title }: { title: string }) => (
     <h4 className="text-lg font-semibold text-gray-700 mt-6 mb-4">{title}</h4>
 );
 
-
-const FormField = ({ label, type = 'text', placeholder, value, onChange }: { label: string, type?: string, placeholder?: string, value: any, onChange: any }) => (
+const FormField = ({ label, type = 'text', placeholder, value, onChange }: { label: string, type?: string, placeholder?: string, value: string, onChange: (e: ChangeEvent<HTMLInputElement>) => void }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <input 
@@ -42,7 +48,7 @@ const FormField = ({ label, type = 'text', placeholder, value, onChange }: { lab
     </div>
 );
 
-const SelectField = ({ label, name, options, value, onChange }: { label: string, name: string, options: {value: string, label: string}[], value: any, onChange: any }) => (
+const SelectField = ({ label, name, options, value, onChange }: { label: string, name: string, options: Option[], value: string, onChange: (e: ChangeEvent<HTMLSelectElement>) => void }) => (
      <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <select 
@@ -59,9 +65,9 @@ const SelectField = ({ label, name, options, value, onChange }: { label: string,
 );
 
 
-const FileUploadField = ({ label, onFileChange, fileError }: { label: string, onFileChange: any, fileError: string }) => {
+const FileUploadField = ({ label, onFileChange, fileError }: { label: string, onFileChange: (file: File) => void, fileError?: string }) => {
     const [fileName, setFileName] = useState('');
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
             setFileName(file.name);
@@ -90,7 +96,7 @@ const FileUploadField = ({ label, onFileChange, fileError }: { label: string, on
     );
 };
 
-const RadioGroupField = ({ label, name, options, value, onChange }: { label: string, name: string, options: {value: string, label: string}[], value: any, onChange: any }) => (
+const RadioGroupField = ({ label, name, options, value, onChange }: { label: string, name: string, options: Option[], value: string, onChange: (e: { target: {name: string, value: string} }) => void }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <div className="flex items-center space-x-4 flex-wrap">
@@ -115,7 +121,7 @@ const RadioGroupField = ({ label, name, options, value, onChange }: { label: str
     </div>
 );
 
-const CheckboxGroupField = ({ label, value = [], onChange, options }: { label: string, value: string[], onChange: any, options: {value: string, label: string}[] }) => (
+const CheckboxGroupField = ({ label, value = [], onChange, options }: { label: string, value: string[], onChange: (e: ChangeEvent<HTMLInputElement>) => void, options: Option[] }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
@@ -135,7 +141,7 @@ const CheckboxGroupField = ({ label, value = [], onChange, options }: { label: s
 );
 
 
-const TextareaField = ({ label, placeholder, value, onChange }: { label: string, placeholder?: string, value: any, onChange: any }) => (
+const TextareaField = ({ label, placeholder, value, onChange }: { label: string, placeholder?: string, value: string, onChange: (e: ChangeEvent<HTMLTextAreaElement>) => void }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <textarea 
@@ -148,15 +154,16 @@ const TextareaField = ({ label, placeholder, value, onChange }: { label: string,
     </div>
 );
 
-const TableField = ({ label, columns, value = [], onChange }: { label: string, columns: {key: string, header: string}[], value: any[], onChange: any }) => {
+const TableField = ({ label, columns, value = [], onChange }: { label: string, columns: Column[], value: any[], onChange: (value: any[]) => void }) => {
     const safeColumns = Array.isArray(columns) ? columns : [];
+    const columnsString = JSON.stringify(safeColumns);
 
     useEffect(() => {
         if (value.length === 0 && safeColumns.length > 0) {
             const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
             onChange([newRow]);
         }
-    }, [safeColumns, value.length, onChange]);
+    }, [columnsString, value.length, onChange]);
 
     const handleAddRow = () => {
         const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
@@ -212,7 +219,7 @@ const TableField = ({ label, columns, value = [], onChange }: { label: string, c
     );
 };
 
-const DynamicPersonField = ({ title, personType, value = [], onChange, fieldSet, max }: { title?: string, personType: string, value: any[], onChange: any, fieldSet: any[], max?: number }) => {
+const DynamicPersonField = ({ title, personType, value = [], onChange, fieldSet, max }: { title?: string, personType: string, value: any[], onChange: (value: any[]) => void, fieldSet: any[], max?: number }) => {
     
     const handleAdd = () => {
         if (!max || value.length < max) {
@@ -240,8 +247,9 @@ const DynamicPersonField = ({ title, personType, value = [], onChange, fieldSet,
                      <h4 className="font-semibold text-gray-700 mb-4">{personType} {index + 1}</h4>
                      <button type="button" onClick={() => handleRemove(index)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold text-lg">&times;</button>
                      {fieldSet.map(field => {
-                         const {Component, id, label, ...props} = field;
-                         return <Component key={id} label={label} {...props} value={personData[id] || ''} onChange={(e: any) => handleChange(index, id, e.target.value)} />
+                         const {Component, id, ...props} = field;
+                         const fieldId = `${id}_${index}`;
+                         return <Component key={id} {...props} value={personData[id] || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(index, id, e.target.value)} />
                      })}
                 </div>
             ))}
@@ -254,7 +262,7 @@ const DynamicPersonField = ({ title, personType, value = [], onChange, fieldSet,
 
 
 // --- 服务模块及所需字段的数据结构 ---
-const clientAgentFields = [
+const clientAgentFields: Field[] = [
     { id: 'fullName', label: '全名 (包括任何别名)', Component: FormField },
     { id: 'idNumber', label: '身份证/护照号码', Component: FormField },
     { id: 'homeAddress', label: '住家地址', Component: FormField },
@@ -262,7 +270,7 @@ const clientAgentFields = [
     { id: 'contactNumber', label: '联系号码', Component: FormField },
 ];
 
-const directorFields = [
+const directorFields: Field[] = [
     { id: 'fullName', label: '全名 (包括任何别名)', Component: FormField },
     { id: 'idNumber', label: '身份证/护照号码', Component: FormField },
     { id: 'gender', label: '性别', name:'director_gender', options: [{label:'男', value:'male'}, {label:'女', value:'female'}], Component: RadioGroupField },
@@ -274,7 +282,7 @@ const directorFields = [
     { id: 'email', label: '邮箱地址', Component: FormField },
 ];
 
-const shareholderFields = [
+const shareholderFields: Field[] = [
     { id: 'fullName', label: '全名/公司名', Component: FormField },
     { id: 'idNumber', label: '身份证/护照号码/公司注册号(UEN)', Component: FormField },
     { id: 'gender', label: '性别', name:'shareholder_gender', options: [{label:'男', value:'male'}, {label:'女', value:'female'}], Component: RadioGroupField },
@@ -287,7 +295,7 @@ const shareholderFields = [
     { id: 'email', label: '邮箱地址', Component: FormField },
 ];
 
-const uboFields = [
+const uboFields: Field[] = [
     { id: 'fullName', label: '全名 (包括任何别名)', Component: FormField },
     { id: 'idNumber', label: '身份证/护照号码', Component: FormField },
     { id: 'gender', label: '性别', name:'ubo_gender', options: [{label:'男', value:'male'}, {label:'女', value:'female'}], Component: RadioGroupField },
@@ -299,7 +307,7 @@ const uboFields = [
     { id: 'ownershipInfo', label: '请提供实际受益所有权的性质信息', placeholder: '例如: 拥有超过25%的所有权', Component: TextareaField },
 ];
 
-const contactFields = [
+const contactFields: Field[] = [
     { id: 'name', label: '姓名', Component: FormField },
     { id: 'id', label: '新加坡身份证/护照号码', Component: FormField },
     { id: 'mobile', label: '手机号码', Component: FormField },
@@ -308,7 +316,7 @@ const contactFields = [
 ];
 
 
-const services = [
+const services: Service[] = [
     {
         id: 'company-registration', 
         title: '新加坡公司注册信息表',
@@ -523,10 +531,10 @@ const services = [
 
 
 // --- 合并表单弹窗组件 ---
-const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, setSubmissionStatus }: { isOpen: boolean, onClose: any, selectedServiceIds: string[], formData: any, setFormData: any, setSubmissionStatus: any }) => {
+const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, setSubmissionStatus }: { isOpen: boolean, onClose: () => void, selectedServiceIds: string[], formData: FormData, setFormData: Dispatch<SetStateAction<FormData>>, setSubmissionStatus: Dispatch<SetStateAction<string>> }) => {
     
     const handleFormChange = (fieldId: string, value: any) => {
-        setFormData((prev: any) => ({...prev, [fieldId]: value}));
+        setFormData((prev: FormData) => ({...prev, [fieldId]: value}));
     };
     
     const handleFileChange = (fieldId: string, file: File) => {
@@ -574,7 +582,7 @@ const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormDat
             const result = await response.json();
             setSubmissionStatus('success');
             console.log('提交成功:', result);
-            onClose(); // 关闭模态框
+            onClose();
         } catch (error) {
             setSubmissionStatus('error');
             console.error('提交失败:', error);
@@ -584,7 +592,7 @@ const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormDat
 
     if (!isOpen) return null;
 
-    const renderField = (field: any) => {
+    const renderField = (field: Field) => {
         const { Component, id, ...props } = field;
         
         // --- 特殊字段渲染逻辑 ---
@@ -652,7 +660,7 @@ const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormDat
         
         // --- 通用字段渲染 ---
         const value = formData[id];
-        const onChange = (e: React.ChangeEvent<HTMLInputElement>) => handleFormChange(id, e.target.value);
+        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, e.target.value);
         const onMultiChange = (newValue: any) => handleFormChange(id, newValue);
 
         if (Component === FileUploadField) {
@@ -744,7 +752,7 @@ const FloatingPaths = ({ position }: { position: number }) => {
 export default function ApexPage() {
     const [selectedServices, setSelectedServices] = useState<string[]>([]);
     const [isModalOpen, setModalOpen] = useState(false);
-    const [formData, setFormData] = useState({});
+    const [formData, setFormData] = useState<FormData>({});
     const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
     const handleSelectService = (serviceId: string) => {
@@ -861,3 +869,4 @@ export default function ApexPage() {
         </div>
     );
 }
+

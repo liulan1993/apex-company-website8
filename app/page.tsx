@@ -157,6 +157,7 @@ const TextareaField: FC<{ label: string, placeholder?: string, value: string, on
 const TableField: FC<{ label: string, columns: Column[], value: any[], onChange: (value: any[]) => void }> = ({ label, columns, value = [], onChange }) => {
     const safeColumns = Array.isArray(columns) ? columns : [];
     
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const columnsString = JSON.stringify(safeColumns);
 
     useEffect(() => {
@@ -164,8 +165,7 @@ const TableField: FC<{ label: string, columns: Column[], value: any[], onChange:
             const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
             onChange([newRow]);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [columnsString, value.length]);
+    }, [columnsString, value.length, onChange]);
 
     const handleAddRow = () => {
         const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
@@ -595,7 +595,14 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
 
     const renderField = (field: Field) => {
         const { Component, id, ...props } = field;
-        
+        const value = formData[id];
+
+        const commonProps = {
+            key: id,
+            value: value,
+            ...props,
+        };
+
         if (id === 'ha_s3_familyHistory' || id === 'ha_s4_diagnosed') {
             const detailsId = id === 'ha_s3_familyHistory' ? 'ha_s3_other_details' : 'ha_s4_other_details';
             const cancerDetailsId = id === 'ha_s3_familyHistory' ? 'ha_s3_cancer_details' : undefined;
@@ -631,7 +638,7 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
         if (id === 'is_s1_visa') {
              return(
                  <div key={id}>
-                    <SelectField {...props} value={formData[id] || ''} onChange={(e) => handleFormChange(id, e.target.value)}/>
+                    <SelectField {...props} value={formData[id] || ''} onChange={(e: ChangeEvent<HTMLSelectElement>) => handleFormChange(id, e.target.value)}/>
                     <AnimatePresence>
                         {formData[id] === 'yes' &&
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
@@ -643,26 +650,23 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
              )
         }
         
-        const value = formData[id];
-        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, (e.target as HTMLInputElement).value);
-        const onMultiChange = (newValue: any[]) => handleFormChange(id, newValue);
-
         if (Component === FileUploadField) {
-             return <Component key={id} {...props} onFileChange={(file: File) => handleFileChange(id, file)} fileError={formData[id]?.error}/>;
+             return <Component {...commonProps} onFileChange={(file: File) => handleFileChange(id, file)} fileError={formData[id]?.error}/>;
         }
         if (Component === TableField || Component === DynamicPersonField) {
-            return <Component key={id} {...props} value={value || []} onChange={onMultiChange} />;
+            return <Component {...commonProps} value={value || []} onChange={(newValue: any[]) => handleFormChange(id, newValue)} />;
         }
         if (Component === CheckboxGroupField) {
             const onCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                 const { value: checkboxValue, checked } = e.target;
-                const currentValues = value || [];
-                const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter((v:string) => v !== checkboxValue);
-                onMultiChange(newValues);
+                const currentValues: string[] = value || [];
+                const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter(v => v !== checkboxValue);
+                handleFormChange(id, newValues);
             };
-            return <Component key={id} {...props} value={value || []} onChange={onCheckboxChange} />;
+            return <Component {...commonProps} value={value || []} onChange={onCheckboxChange} />;
         }
-        return <Component key={id} {...props} value={value || ''} onChange={onChange} />;
+        
+        return <Component {...commonProps} onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange(id, e.target.value)} />;
     };
 
     return (

@@ -4,13 +4,22 @@ import React, { useState, useMemo, useEffect, ChangeEvent, Dispatch, SetStateAct
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 
-// --- 类型定义 ---
+// --- 类型定义 (已修复) ---
 type Option = { value: string; label: string };
 type Column = { key: string; header: string };
 interface BaseFieldProps { id: string; label?: string; title?: string; }
-type Field = BaseFieldProps & { Component: FC<any>; [key: string]: any };
+type Field = BaseFieldProps & { Component: React.ElementType; [key: string]: unknown };
+
+// 为表单数据结构定义更具体的辅助类型
+type TableRow = Record<string, string>;
+type PersonData = Record<string, string>;
+type FileData = { file?: File; error?: string };
+
+// 使用 'unknown' 作为 FormData 值的类型，以实现类型安全
+type FormData = Record<string, unknown>;
+
 type Service = { id: string; title: string; fields: Field[] };
-type FormData = { [key: string]: any };
+
 
 // --- 工具函数 ---
 function cn(...inputs: (string | undefined | null | boolean | { [key: string]: boolean })[]): string {
@@ -39,10 +48,10 @@ const SubHeader: FC<{ title: string }> = ({ title }) => (
 const FormField: FC<{ label: string; type?: string; placeholder?: string; value: string; onChange: (e: ChangeEvent<HTMLInputElement>) => void }> = ({ label, type = 'text', placeholder, value, onChange }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
-        <input 
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-            type={type} 
-            placeholder={placeholder} 
+        <input
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            type={type}
+            placeholder={placeholder}
             value={value || ''}
             onChange={onChange}
         />
@@ -52,8 +61,8 @@ const FormField: FC<{ label: string; type?: string; placeholder?: string; value:
 const SelectField: FC<{ label: string; name: string; options: Option[]; value: string; onChange: (e: ChangeEvent<HTMLSelectElement>) => void }> = ({ label, name, options, value, onChange }) => (
      <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
-        <select 
-            name={name} 
+        <select
+            name={name}
             value={value}
             onChange={onChange}
             className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -103,16 +112,16 @@ const RadioGroupField: FC<{ label: string, name: string, options: Option[], valu
         <div className="flex items-center space-x-4 flex-wrap">
             {options.map(option => (
                 <label key={option.value} className="flex items-center mr-4 mb-2 cursor-pointer">
-                    <input 
-                        type="checkbox" 
-                        name={name} 
-                        value={option.value} 
-                        checked={value === option.value} 
+                    <input
+                        type="checkbox"
+                        name={name}
+                        value={option.value}
+                        checked={value === option.value}
                         onChange={(e) => {
                              const newValue = e.target.value;
                              const finalValue = value === newValue ? '' : newValue;
                              onChange({ target: { name, value: finalValue }});
-                        }} 
+                        }}
                         className="mr-2 h-4 w-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500"
                     />
                     {option.label}
@@ -128,8 +137,8 @@ const CheckboxGroupField: FC<{ label: string, value: string[], onChange: (e: Cha
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
             {options.map(option => (
                 <label key={option.value} className="flex items-center whitespace-nowrap cursor-pointer">
-                    <input 
-                        type="checkbox" 
+                    <input
+                        type="checkbox"
                         value={option.value}
                         checked={value.includes(option.value)}
                         onChange={onChange}
@@ -145,9 +154,9 @@ const CheckboxGroupField: FC<{ label: string, value: string[], onChange: (e: Cha
 const TextareaField: FC<{ label: string, placeholder?: string, value: string, onChange: (e: ChangeEvent<HTMLTextAreaElement>) => void }> = ({ label, placeholder, value, onChange }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
-        <textarea 
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-            rows={4} 
+        <textarea
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            rows={4}
             placeholder={placeholder}
             value={value}
             onChange={onChange}
@@ -155,18 +164,18 @@ const TextareaField: FC<{ label: string, placeholder?: string, value: string, on
     </div>
 );
 
-const TableField: FC<{ label: string, columns: Column[], value: any[], onChange: (value: any[]) => void }> = ({ label, columns, value = [], onChange }) => {
+const TableField: FC<{ label: string, columns: Column[], value: TableRow[], onChange: (value: TableRow[]) => void }> = ({ label, columns, value = [], onChange }) => {
     const safeColumns = useMemo(() => Array.isArray(columns) ? columns : [], [columns]);
 
     useEffect(() => {
         if (value.length === 0 && safeColumns.length > 0) {
-            const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
+            const newRow: TableRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
             onChange([newRow]);
         }
     }, [safeColumns, value.length, onChange]);
 
     const handleAddRow = () => {
-        const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
+        const newRow: TableRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
         onChange([...value, newRow]);
     };
 
@@ -178,7 +187,7 @@ const TableField: FC<{ label: string, columns: Column[], value: any[], onChange:
 
     const handleCellChange = (rowIndex: number, columnKey: string, cellValue: string) => {
         const newRows = [...value];
-        newRows[rowIndex][columnKey] = cellValue;
+        newRows[rowIndex] = { ...newRows[rowIndex], [columnKey]: cellValue };
         onChange(newRows);
     };
 
@@ -219,14 +228,14 @@ const TableField: FC<{ label: string, columns: Column[], value: any[], onChange:
     );
 };
 
-const DynamicPersonField: FC<{ title?: string, personType: string, value: any[], onChange: (value: any[]) => void, fieldSet: Field[], max?: number }> = ({ title, personType, value = [], onChange, fieldSet, max }) => {
-    
+const DynamicPersonField: FC<{ title?: string, personType: string, value: PersonData[], onChange: (value: PersonData[]) => void, fieldSet: Field[], max?: number }> = ({ title, personType, value = [], onChange, fieldSet, max }) => {
+
     const handleAdd = () => {
         if (!max || value.length < max) {
             onChange([...value, {}]);
         }
     };
-    
+
     const handleRemove = (index: number) => {
         const newValues = [...value];
         newValues.splice(index, 1);
@@ -238,14 +247,14 @@ const DynamicPersonField: FC<{ title?: string, personType: string, value: any[],
         newValues[index] = { ...newValues[index], [fieldId]: fieldValue };
         onChange(newValues);
     };
-    
+
     return (
         <div>
             {title && <SectionHeader title={title} />}
             {value.map((personData, index) => (
                 <div key={index} className="p-4 border rounded-lg mb-4 relative bg-gray-50">
                      <h4 className="font-semibold text-gray-700 mb-4">{personType} {index + 1}</h4>
-                     <button type="button" onClick={() => handleRemove(index)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold text-lg">&times;</button>
+                     <button type="button" onClick={() => handleRemove(index)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold text-lg">×</button>
                      {fieldSet.map(field => {
                          const {Component, id, ...props} = field;
                          return <Component key={id} {...props} value={personData[id]} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(index, id, e.target.value)} />
@@ -317,7 +326,7 @@ const contactFields: Field[] = [
 
 const services: Service[] = [
     {
-        id: 'company-registration', 
+        id: 'company-registration',
         title: '新加坡公司注册信息表',
         fields: [
             { id: 'reg_partA_clients', title: 'A部分: 客户/代理人信息', personType: '客户/代理人', fieldSet: clientAgentFields, Component: DynamicPersonField },
@@ -330,26 +339,26 @@ const services: Service[] = [
             { id: 'reg_partA_bizCountries', label: '企业主要开展业务的国家', placeholder:'1.国家 2.国家 3.国家', Component: TextareaField },
             { id: 'reg_partA_bizScope', label: '拟注册公司营业范围简介', Component: TextareaField },
             { id: 'reg_partA_capital', label: '公司注册金额 (新币)', type: 'number', Component: FormField },
-            
+
             { id: 'reg_partB_directors', title: 'B部分: 公司董事信息 (至少一名新加坡本地董事)', personType: '董事', fieldSet: directorFields, Component: DynamicPersonField },
             { id: 'reg_partB_docs_header', title: '董事所需文件', Component: SubHeader },
             { id: 'reg_partB_doc_sg', label: '新加坡身份证复印件', Component: FileUploadField },
             { id: 'reg_partB_doc_ep', label: '新加坡工作准证 (EP) 复印件', Component: FileUploadField },
             { id: 'reg_partB_doc_passport', label: '护照复印件和经公证的地址证明', Component: FileUploadField },
-            
+
             { id: 'reg_partC_shareholders', title: 'C部分: 公司股东信息 (个人/机构)', personType: '股东', fieldSet: shareholderFields, Component: DynamicPersonField },
             { id: 'reg_partC_docs_header', title: '个人股东所需文件', Component: SubHeader },
             { id: 'reg_partC_doc_sg_sh', label: '新加坡身份证复印件 (个人股东)', Component: FileUploadField },
             { id: 'reg_partC_doc_ep_sh', label: '新加坡工作准证 (EP) 复印件 (个人股东)', Component: FileUploadField },
             { id: 'reg_partC_doc_passport_sh', label: '护照复印件和经公证的地址证明 (个人股东)', Component: FileUploadField },
-            
+
             { id: 'reg_partC_corp_docs_header', title: '如果股东是公司, 请提供以下文件', Component: SubHeader },
             { id: 'reg_partC_doc_incorp', label: '公司成立证书', Component: FileUploadField },
             { id: 'reg_partC_doc_moa', label: '公司章程或备忘同文件', Component: FileUploadField },
             { id: 'reg_partC_doc_bizfile', label: '公司注册商业档案 (Bizfile)', Component: FileUploadField },
 
             { id: 'reg_partD_ubos', title: 'D部分: 最终受益人信息', personType: '最终受益人', fieldSet: uboFields, Component: DynamicPersonField },
-            
+
             { id: 'reg_partE_header', title: 'E部分: 财务年度截止日', Component: SectionHeader },
             { id: 'reg_partE_fye', label: '拟注册公司财务年度截止日应定为', type:'date', placeholder:'每个公历年的 [日期]', Component: FormField },
 
@@ -365,7 +374,7 @@ const services: Service[] = [
             { id: 'reg_partG_id', label:'身份证/护照号', Component: FormField },
         ]
     },
-    { 
+    {
         id: 'health-assessment',
         title: '健康溯源体检评估表',
         fields: [
@@ -394,7 +403,7 @@ const services: Service[] = [
             { id: 'ha_s8_extra', label: '补充信息', placeholder: '请输入其他需要说明的信息', Component: TextareaField },
         ]
     },
-    { 
+    {
         id: 'permit',
         title: '准证申请表',
         fields: [
@@ -529,21 +538,21 @@ const services: Service[] = [
 ].filter(s => s.id !== 'study' && s.id !== 'medical');
 
 
-// --- 合并表单弹窗组件 ---
+// --- 合并表单弹窗组件 (已修复) ---
 const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds: string[], formData: FormData, setFormData: Dispatch<SetStateAction<FormData>>, setSubmissionStatus: Dispatch<SetStateAction<string>> }> = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, setSubmissionStatus }) => {
-    
-    const handleFormChange = (fieldId: string, value: any) => {
-        setFormData((prev: FormData) => ({...prev, [fieldId]: value}));
+
+    const handleFormChange = (fieldId: string, value: unknown) => {
+        setFormData((prev) => ({...prev, [fieldId]: value}));
     };
-    
+
     const handleFileChange = (fieldId: string, file: File) => {
          if (file.size > 10 * 1024 * 1024) { // 10MB
-            handleFormChange(fieldId, { ...(formData[fieldId] || {}), error: '文件大小不能超过 10MB' });
+            handleFormChange(fieldId, { file: undefined, error: '文件大小不能超过 10MB' });
         } else {
-            handleFormChange(fieldId, { file: file, error: null });
+            handleFormChange(fieldId, { file: file, error: undefined });
         }
     };
-    
+
     const consolidatedFields = useMemo(() => {
         const fieldMap = new Map();
         selectedServiceIds.forEach(serviceId => {
@@ -564,13 +573,27 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
         try {
             setSubmissionStatus('loading');
             const submissionId = uuidv4();
+            // 注意：这里需要处理 formData 中的 File 对象，它们不能直接被 JSON.stringify
+            // 在实际应用中，您需要使用 FormData API 和 multipart/form-data 来上传文件
+            // 此处为保持简单，仅序列化非文件数据
+            const serializableFormData = Object.entries(formData).reduce((acc, [key, value]) => {
+                if (key.includes('doc') || key.includes('upload') || key.includes('passport') || key.includes('transcript')) {
+                    // 实际项目中应处理文件上传，此处仅为示例
+                    acc[key] = (value as FileData)?.file?.name || 'File to be uploaded';
+                } else {
+                    acc[key] = value;
+                }
+                return acc;
+            }, {} as Record<string, unknown>);
+
+
             const response = await fetch('/api/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     id: submissionId,
                     services: selectedServiceIds.map(id => services.find(s => s.id === id)?.title),
-                    formData,
+                    formData: serializableFormData,
                 }),
             });
 
@@ -593,91 +616,92 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
 
     const renderField = (field: Field) => {
         const { Component, id, ...props } = field;
-        
+        const value = formData[id];
+
         // --- 特殊字段渲染逻辑 ---
         if (id === 'ha_s3_familyHistory') {
+            const currentValues = (value as string[]) || [];
              return(
                  <div key={id}>
-                    <CheckboxGroupField {...props} value={formData[id] || []} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const { value, checked } = e.target;
-                        const currentValues = formData[id] || [];
-                        const newValues = checked ? [...currentValues, value] : currentValues.filter((v: string) => v !== value);
+                    <CheckboxGroupField {...props} value={currentValues} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const { value: checkboxValue, checked } = e.target;
+                        const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter((v: string) => v !== checkboxValue);
                         handleFormChange(id, newValues);
                     }}/>
                     <AnimatePresence>
-                        {formData[id]?.includes('cancer') && 
+                        {currentValues?.includes('cancer') &&
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label="癌症部位" placeholder="请填写癌症具体部位" value={formData['ha_s3_cancer_details'] || ''} onChange={(e) => handleFormChange('ha_s3_cancer_details', e.target.value)}/>
+                                <FormField label="癌症部位" placeholder="请填写癌症具体部位" value={(formData['ha_s3_cancer_details'] as string) || ''} onChange={(e) => handleFormChange('ha_s3_cancer_details', e.target.value)}/>
                             </motion.div>
                         }
                     </AnimatePresence>
                     <AnimatePresence>
-                        {formData[id]?.includes('other') && 
+                        {currentValues?.includes('other') &&
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label="其他疾病史" placeholder="请填写其他家族疾病史" value={formData['ha_s3_other_details'] || ''} onChange={(e) => handleFormChange('ha_s3_other_details', e.target.value)}/>
+                                <FormField label="其他疾病史" placeholder="请填写其他家族疾病史" value={(formData['ha_s3_other_details'] as string) || ''} onChange={(e) => handleFormChange('ha_s3_other_details', e.target.value)}/>
                             </motion.div>
                         }
                     </AnimatePresence>
                  </div>
              )
         }
-        
+
         if (id === 'ha_s4_diagnosed') {
+            const currentValues = (value as string[]) || [];
              return (
                  <div key={id}>
-                    <CheckboxGroupField {...props} value={formData[id] || []} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                         const { value, checked } = e.target;
-                         const currentValues = formData[id] || [];
-                         const newValues = checked ? [...currentValues, value] : currentValues.filter((v:string) => v !== value);
+                    <CheckboxGroupField {...props} value={currentValues} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                         const { value: checkboxValue, checked } = e.target;
+                         const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter((v:string) => v !== checkboxValue);
                          handleFormChange(id, newValues);
                     }}/>
                     <AnimatePresence>
-                        {formData[id]?.includes('other') && 
+                        {currentValues?.includes('other') &&
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label="其他确诊病史" placeholder="请填写其他确诊病史" value={formData['ha_s4_other_details'] || ''} onChange={(e) => handleFormChange('ha_s4_other_details', e.target.value)}/>
+                                <FormField label="其他确诊病史" placeholder="请填写其他确诊病史" value={(formData['ha_s4_other_details'] as string) || ''} onChange={(e) => handleFormChange('ha_s4_other_details', e.target.value)}/>
                             </motion.div>
                         }
                     </AnimatePresence>
                 </div>
              )
         }
-        
+
         if (id === 'is_s1_visa') {
+            const currentValue = value as string;
              return(
                  <div key={id}>
-                    <SelectField {...props} value={formData[id] || ''} onChange={(e: ChangeEvent<HTMLSelectElement>) => handleFormChange(id, e.target.value)}/>
+                    <SelectField {...props} value={currentValue || ''} onChange={(e: ChangeEvent<HTMLSelectElement>) => handleFormChange(id, e.target.value)}/>
                     <AnimatePresence>
-                        {formData[id] === 'yes' &&
+                        {currentValue === 'yes' &&
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label="签证类型" placeholder="请填写签证类型" value={formData['is_s1_visa_type'] || ''} onChange={(e) => handleFormChange('is_s1_visa_type', e.target.value)}/>
+                                <FormField label="签证类型" placeholder="请填写签证类型" value={(formData['is_s1_visa_type'] as string) || ''} onChange={(e) => handleFormChange('is_s1_visa_type', e.target.value)}/>
                             </motion.div>
                         }
                     </AnimatePresence>
                  </div>
              )
         }
-        
+
         // --- 通用字段渲染 ---
-        const value = formData[id];
         const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, (e.target as HTMLInputElement).value);
-        const onMultiChange = (newValue: any[]) => handleFormChange(id, newValue);
+        const onMultiChange = (newValue: string[] | TableRow[] | PersonData[]) => handleFormChange(id, newValue);
 
         if (Component === FileUploadField) {
-             return <Component key={id} {...props} onFileChange={(file: File) => handleFileChange(id, file)} fileError={formData[id]?.error}/>;
+             return <Component key={id} {...props} onFileChange={(file: File) => handleFileChange(id, file)} fileError={(value as FileData)?.error}/>;
         }
         if (Component === TableField || Component === DynamicPersonField) {
-            return <Component key={id} {...props} value={value || []} onChange={onMultiChange} />;
+            return <Component key={id} {...props} value={(value as TableRow[] | PersonData[]) || []} onChange={onMultiChange} />;
         }
         if (Component === CheckboxGroupField) {
             const onCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                 const { value: checkboxValue, checked } = e.target;
-                const currentValues: string[] = value || [];
+                const currentValues: string[] = (value as string[]) || [];
                 const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter(v => v !== checkboxValue);
                 onMultiChange(newValues);
             };
-            return <Component key={id} {...props} value={value || []} onChange={onCheckboxChange} />;
+            return <Component key={id} {...props} value={(value as string[]) || []} onChange={onCheckboxChange} />;
         }
-        return <Component key={id} {...props} value={value || ''} onChange={onChange} />;
+        return <Component key={id} {...props} value={(value as string) || ''} onChange={onChange} />;
     };
 
     return (
@@ -697,9 +721,9 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
             >
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl sm:text-2xl font-bold text-gray-900">合并资料上传</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl">×</button>
                 </div>
-                
+
                 <form>
                     {consolidatedFields.map(renderField)}
                 </form>
@@ -755,13 +779,13 @@ export default function ApexPage() {
     const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
     const handleSelectService = (serviceId: string) => {
-        setSelectedServices(prev => 
-            prev.includes(serviceId) 
+        setSelectedServices(prev =>
+            prev.includes(serviceId)
                 ? prev.filter(id => id !== serviceId)
                 : [...prev, serviceId]
         );
     };
-    
+
     const title = "Apex";
     const words = title.split(" ");
 
@@ -795,8 +819,8 @@ export default function ApexPage() {
                         ))}
                     </h1>
                 </motion.div>
-                
-                <motion.div 
+
+                <motion.div
                     className="w-full max-w-4xl"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -811,8 +835,8 @@ export default function ApexPage() {
                                     onClick={() => handleSelectService(service.id)}
                                     className={cn(
                                         "p-4 rounded-lg text-center font-semibold transition-all duration-300 transform hover:scale-105 shadow-md border text-sm sm:text-base",
-                                        isSelected 
-                                            ? "bg-blue-600 text-white border-blue-700 shadow-lg" 
+                                        isSelected
+                                            ? "bg-blue-600 text-white border-blue-700 shadow-lg"
                                             : "bg-white/70 backdrop-blur-sm text-gray-800 border-gray-200/50 hover:bg-white"
                                     )}
                                 >
@@ -821,9 +845,9 @@ export default function ApexPage() {
                             );
                         })}
                     </div>
-                    
+
                     <div className="text-center">
-                        <button 
+                        <button
                             onClick={() => { setFormData({}); setModalOpen(true); }}
                             disabled={selectedServices.length === 0}
                             className="bg-green-600 text-white font-bold py-3 px-10 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100"
@@ -833,12 +857,12 @@ export default function ApexPage() {
                     </div>
                 </motion.div>
             </div>
-            
+
             <AnimatePresence>
                 {isModalOpen && (
-                    <UploadModal 
-                        isOpen={isModalOpen} 
-                        onClose={() => setModalOpen(false)} 
+                    <UploadModal
+                        isOpen={isModalOpen}
+                        onClose={() => setModalOpen(false)}
                         selectedServiceIds={selectedServices}
                         formData={formData}
                         setFormData={setFormData}
@@ -849,13 +873,13 @@ export default function ApexPage() {
 
             <AnimatePresence>
                 {submissionStatus !== 'idle' && (
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, y: 50 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 50 }}
                         className="fixed bottom-10 right-10 p-4 rounded-lg shadow-lg text-white"
-                        style={{ 
-                            backgroundColor: submissionStatus === 'success' ? '#28a745' : 
+                        style={{
+                            backgroundColor: submissionStatus === 'success' ? '#28a745' :
                                              submissionStatus === 'error' ? '#dc3545' : '#007bff'
                         }}
                     >

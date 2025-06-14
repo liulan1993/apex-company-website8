@@ -4,21 +4,18 @@ import React, { useState, useMemo, useEffect, ChangeEvent, Dispatch, SetStateAct
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 
-// --- 类型定义 (已修复) ---
+// --- 类型定义 ---
 type Option = { value: string; label: string };
 type Column = { key: string; header: string };
 interface BaseFieldProps { id: string; label?: string; title?: string; }
 type Field = BaseFieldProps & { Component: React.ElementType; [key: string]: unknown };
 
-// 为表单数据结构定义更具体的辅助类型
 type TableRow = Record<string, string>;
 type PersonData = Record<string, string>;
 type FileData = { file?: File; error?: string };
 
-// 使用 'unknown' 作为 FormData 值的类型，以实现类型安全
 type FormData = Record<string, unknown>;
 
-// 修复点: 为提交状态创建一个专门的类型
 type SubmissionStatus = 'idle' | 'loading' | 'success' | 'error';
 
 type Service = { id: string; title: string; fields: Field[] };
@@ -109,12 +106,13 @@ const FileUploadField: FC<{ label: string; onFileChange: (file: File) => void; f
     );
 };
 
+// 修复点 2: 为选项文字添加明确的颜色
 const RadioGroupField: FC<{ label: string, name: string, options: Option[], value: string, onChange: (e: { target: {name: string, value: string} }) => void }> = ({ label, name, options, value, onChange }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <div className="flex items-center space-x-4 flex-wrap">
             {options.map(option => (
-                <label key={option.value} className="flex items-center mr-4 mb-2 cursor-pointer">
+                <label key={option.value} className="flex items-center mr-4 mb-2 cursor-pointer text-gray-800">
                     <input
                         type="checkbox"
                         name={name}
@@ -134,12 +132,13 @@ const RadioGroupField: FC<{ label: string, name: string, options: Option[], valu
     </div>
 );
 
+// 修复点 2: 为选项文字添加明确的颜色
 const CheckboxGroupField: FC<{ label: string, value: string[], onChange: (e: ChangeEvent<HTMLInputElement>) => void, options: Option[] }> = ({ label, value = [], onChange, options }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
             {options.map(option => (
-                <label key={option.value} className="flex items-center whitespace-nowrap cursor-pointer">
+                <label key={option.value} className="flex items-center whitespace-nowrap cursor-pointer text-gray-800">
                     <input
                         type="checkbox"
                         value={option.value}
@@ -544,7 +543,6 @@ const services: Service[] = [
 
 
 // --- 合并表单弹窗组件 ---
-// 修复点: 更新 props 定义以使用 SubmissionStatus 类型
 const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds: string[], formData: FormData, setFormData: Dispatch<SetStateAction<FormData>>, setSubmissionStatus: Dispatch<SetStateAction<SubmissionStatus>> }> = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, setSubmissionStatus }) => {
 
     const handleFormChange = (fieldId: string, value: unknown) => {
@@ -717,11 +715,12 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
     };
 
     return (
+        // 修复点 1: 优化背景遮罩效果
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
             onClick={onClose}
         >
             <motion.div
@@ -788,7 +787,6 @@ export default function ApexPage() {
     const [selectedServices, setSelectedServices] = useState<string[]>([]);
     const [isModalOpen, setModalOpen] = useState(false);
     const [formData, setFormData] = useState<FormData>({});
-    // 修复点: 使用 SubmissionStatus 类型来定义状态
     const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatus>('idle');
 
     const handleSelectService = (serviceId: string) => {

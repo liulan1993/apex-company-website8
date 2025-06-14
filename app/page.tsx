@@ -257,8 +257,9 @@ const DynamicPersonField: FC<{ title?: string, personType: string, value: Person
                      <button type="button" onClick={() => handleRemove(index)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold text-lg">×</button>
                      {fieldSet.map(field => {
                          const {Component, id, ...props} = field;
-                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                         const componentProps: any = { ...props, value: personData[id], onChange: (e: ChangeEvent<HTMLInputElement>) => handleChange(index, id, e.target.value) };
+                         // The props passed to the dynamic components need to be typed properly.
+                         // For this scenario, we can define a common onChange handler signature.
+                         const componentProps = { ...props, value: personData[id] || '', onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> | {target: {name: string, value: string}}) => handleChange(index, id, e.target.value) };
                          return <Component key={id} {...componentProps} />
                      })}
                 </div>
@@ -535,14 +536,13 @@ const services: Service[] = [
 
 
 // --- Combined Form Modal Component ---
-// Core Fix 1: Add submissionStatus to the props for UploadModal
 type UploadModalProps = {
     isOpen: boolean;
     onClose: () => void;
     selectedServiceIds: string[];
     formData: FormData;
     setFormData: Dispatch<SetStateAction<FormData>>;
-    submissionStatus: SubmissionStatus; // Added this prop
+    submissionStatus: SubmissionStatus;
     setSubmissionStatus: Dispatch<SetStateAction<SubmissionStatus>>;
 };
 
@@ -553,10 +553,12 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
     };
 
     const handleFileChange = (fieldId: string, file: File) => {
-         if (file.size > 10 * 1024 * 1024) { // 10MB
-            handleFormChange(fieldId, { file: undefined, error: '文件大小不能超过 10MB' });
+         // Set a file size limit, for example, 700KB for Base64 compatibility with Vercel KV's 1MB limit.
+         const MAX_FILE_SIZE = 700 * 1024; // 700KB
+         if (file.size > MAX_FILE_SIZE) {
+            handleFormChange(fieldId, { file: undefined, error: `文件大小不能超过 ${MAX_FILE_SIZE / 1024}KB` });
         } else {
-            // Clear previous errors when a new file is selected
+            // Clear previous errors when a new valid file is selected
             handleFormChange(fieldId, { file: file, error: undefined });
         }
     };
@@ -582,67 +584,62 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
 
         try {
             const formDataToSubmit = { ...formData };
-            const uploadPromises: Promise<{ key: string; url: string; }>[] = [];
-            const fileFieldsToUpload: { key: string; file: File; }[] = [];
+            const conversionPromises: Promise<{ key: string; base64: string; }>[] = [];
+            const fileFieldsToConvert: { key: string; file: File; }[] = [];
 
-            // Step 1: Find all files that need to be uploaded
+            // Helper function to convert a File to a Base64 string
+            const toBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = error => reject(error);
+            });
+
+            // Step 1: Find all files that need to be converted to Base64
             for (const key in formData) {
                 const value = formData[key] as FileData;
                 if (value && typeof value === 'object' && 'file' in value && value.file instanceof File) {
-                    // Clear previous errors for this file before retrying
-                    handleFormChange(key, { file: value.file, error: undefined });
-                    fileFieldsToUpload.push({ key, file: value.file });
+                    fileFieldsToConvert.push({ key, file: value.file });
                 }
             }
-
-            // Step 2: Create an array of upload promises
-            fileFieldsToUpload.forEach(({ key, file }) => {
-                const uploadPromise = fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
-                    method: 'POST',
-                    body: file,
-                }).then(async (response) => {
-                    if (!response.ok) {
-                        // Try to parse error from server, provide fallback
-                        const errorData = await response.json().catch(() => ({}));
-                        const errorMessage = errorData.error || `HTTP error: ${response.status}`;
-                        return Promise.reject({ key, message: errorMessage });
-                    }
-                    const newBlob = await response.json();
-                    return { key, url: newBlob.url }; // Resolve with field key and URL
-                }).catch(networkError => {
-                    // Catch network errors
-                    return Promise.reject({ key, message: networkError.message || 'Network error' });
+            
+            // Step 2: Create an array of conversion promises
+            fileFieldsToConvert.forEach(({ key, file }) => {
+                const conversionPromise = toBase64(file).then(base64String => {
+                    return { key, base64: base64String };
+                }).catch(error => {
+                    return Promise.reject({ key, message: `无法读取文件: ${error.message}` });
                 });
-                uploadPromises.push(uploadPromise);
+                conversionPromises.push(conversionPromise);
             });
             
-            // Step 3: Execute all uploads in parallel and wait for all to complete
-            const uploadResults = await Promise.allSettled(uploadPromises);
+            // Step 3: Execute all conversions in parallel
+            const conversionResults = await Promise.allSettled(conversionPromises);
 
-            let isUploadFailed = false;
-            uploadResults.forEach((result, index) => {
-                const fieldKey = fileFieldsToUpload[index].key;
+            let isConversionFailed = false;
+            conversionResults.forEach((result, index) => {
+                const fieldKey = fileFieldsToConvert[index].key;
                 if (result.status === 'fulfilled') {
-                    // On success, replace file object with the returned URL
-                    formDataToSubmit[fieldKey] = result.value.url;
+                    // On success, replace file object with the Base64 data URL
+                    formDataToSubmit[fieldKey] = result.value.base64;
                 } else {
                     // On failure, mark as failed and update the specific field with the error
-                    isUploadFailed = true;
+                    isConversionFailed = true;
                     const originalFile = (formData[fieldKey] as FileData).file;
-                    const errorMessage = result.reason?.message || 'Unknown upload error';
-                    console.error(`File upload failed for ${fieldKey}:`, result.reason);
+                    const errorMessage = result.reason?.message || '未知的文件转换错误';
+                    console.error(`File conversion failed for ${fieldKey}:`, result.reason);
                     handleFormChange(fieldKey, { file: originalFile, error: errorMessage });
                 }
             });
 
-            // Step 4: If any upload failed, abort the submission to Notion
-            if (isUploadFailed) {
-                throw new Error('One or more files failed to upload. Please check error messages below the files.');
+            // Step 4: If any conversion failed, abort the submission
+            if (isConversionFailed) {
+                throw new Error('一个或多个文件处理失败。');
             }
 
-            // Step 5: If all uploads are successful, submit the form data to Notion
+            // Step 5: Submit the form data (now with Base64 strings for files) to the backend
             const submissionId = uuidv4();
-            const notionResponse = await fetch('/api/submit', {
+            const response = await fetch('/api/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -652,29 +649,28 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
                 }),
             });
 
-            if (!notionResponse.ok) {
-                const errorResult = await notionResponse.json();
-                throw new Error(errorResult.error || 'Network response was not ok during Notion submission.');
+            if (!response.ok) {
+                const errorResult = await response.json();
+                throw new Error(errorResult.error || '提交到服务器时网络响应错误。');
             }
             
-            const result = await notionResponse.json();
+            const result = await response.json();
             console.log('Submission successful:', result);
             setSubmissionStatus('success');
 
-            // Step 6: Close the modal after a short delay to show success message
+            // Step 6: Close the modal after a short delay
             setTimeout(() => {
                 onClose();
-                setSubmissionStatus('idle'); // Reset status for the next time
+                setSubmissionStatus('idle');
             }, 2000);
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+            const errorMessage = error instanceof Error ? error.message : '发生未知错误。';
             console.error('Submission failed:', errorMessage);
             setSubmissionStatus('error');
             
-            // Hide the general error message after 5 seconds to let user see specific file errors
             setTimeout(() => {
-                if(submissionStatus !== 'loading') { // Prevent hiding if a new submission starts
+                if(submissionStatus !== 'loading') {
                    setSubmissionStatus('idle');
                 }
             }, 5000);
@@ -761,14 +757,23 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
         }
         
         // --- Generic field rendering ---
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} } | any) => handleFormChange(id, e.target ? e.target.value : e);
+        const onChangeHandler = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} } | string[] | TableRow[] | PersonData[]) => {
+            if (Array.isArray(e)) {
+                 handleFormChange(id, e);
+            } else if (e && 'target' in e) {
+                handleFormChange(id, e.target.value);
+            }
+        };
+        
 
         if (Component === FileUploadField) {
-             return <Component key={id} {...props} onFileChange={(file: File) => handleFileChange(id, file)} fileError={(value as FileData)?.error}/>;
+             return <Component key={id} {...props as {label: string}} onFileChange={(file: File) => handleFileChange(id, file)} fileError={(value as FileData)?.error}/>;
         }
-        if (Component === TableField || Component === DynamicPersonField) {
-            return <Component key={id} {...props} value={(value as TableRow[] | PersonData[]) || []} onChange={onChange} />;
+        if (Component === TableField) {
+            return <Component key={id} {...props as {label:string, columns: Column[]}} value={(value as TableRow[]) || []} onChange={onChangeHandler as (value: TableRow[]) => void} />;
+        }
+        if (Component === DynamicPersonField) {
+            return <Component key={id} {...props as {personType: string, fieldSet: Field[], max?: number}} value={(value as PersonData[]) || []} onChange={onChangeHandler as (value: PersonData[]) => void} />;
         }
         if (Component === CheckboxGroupField) {
             const onCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -777,9 +782,10 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
                 const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter(v => v !== checkboxValue);
                 handleFormChange(id, newValues)
             };
-            return <Component key={id} {...props} value={(value as string[]) || []} onChange={onCheckboxChange} />;
+            return <Component key={id} {...props as {label: string, options: Option[]}} value={(value as string[]) || []} onChange={onCheckboxChange} />;
         }
-        return <Component key={id} {...props} value={(value as string) || ''} onChange={onChange} />;
+        // Default case for FormField, TextareaField, SelectField, RadioGroupField
+        return <Component key={id} {...props as {}} value={(value as string) || ''} onChange={onChangeHandler} />;
     };
 
     return (
@@ -952,7 +958,7 @@ export default function ApexPage() {
                         selectedServiceIds={selectedServices}
                         formData={formData}
                         setFormData={setFormData}
-                        submissionStatus={submissionStatus} // Core Fix 2: Pass state to child component
+                        submissionStatus={submissionStatus}
                         setSubmissionStatus={setSubmissionStatus}
                     />
                 )}

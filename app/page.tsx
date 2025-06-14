@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, ChangeEvent, Dispatch, SetStateAct
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 
-// --- 类型定义 ---
+// --- Type Definitions ---
 type Option = { value: string; label: string };
 type Column = { key: string; header: string };
 interface BaseFieldProps { id: string; label?: string; title?: string; }
@@ -21,7 +21,7 @@ type SubmissionStatus = 'idle' | 'loading' | 'success' | 'error';
 type Service = { id: string; title: string; fields: Field[] };
 
 
-// --- 工具函数 ---
+// --- Utility Function ---
 function cn(...inputs: (string | undefined | null | boolean | { [key: string]: boolean })[]): string {
     const classSet = new Set<string>();
     inputs.forEach(input => {
@@ -36,7 +36,7 @@ function cn(...inputs: (string | undefined | null | boolean | { [key: string]: b
     return Array.from(classSet).join(' ');
 }
 
-// --- 表单组件定义 ---
+// --- Form Component Definitions ---
 const SectionHeader: FC<{ title: string }> = ({ title }) => (
     <h3 className="text-xl font-semibold text-gray-800 border-b pb-2 mb-6 mt-6 first:mt-0">{title}</h3>
 );
@@ -271,7 +271,7 @@ const DynamicPersonField: FC<{ title?: string, personType: string, value: Person
 };
 
 
-// --- 服务模块及所需字段的数据结构 ---
+// --- Service Module and Field Data Structures ---
 const clientAgentFields: Field[] = [
     { id: 'fullName', label: '全名 (包括任何别名)', Component: FormField },
     { id: 'idNumber', label: '身份证/护照号码', Component: FormField },
@@ -534,15 +534,15 @@ const services: Service[] = [
 ].filter(s => s.id !== 'study' && s.id !== 'medical');
 
 
-// --- 合并表单弹窗组件 ---
-// 核心修复 1: 为 UploadModal 的 props 添加 submissionStatus
+// --- Combined Form Modal Component ---
+// Core Fix 1: Add submissionStatus to the props for UploadModal
 type UploadModalProps = {
     isOpen: boolean;
     onClose: () => void;
     selectedServiceIds: string[];
     formData: FormData;
     setFormData: Dispatch<SetStateAction<FormData>>;
-    submissionStatus: SubmissionStatus; // 添加这个 prop
+    submissionStatus: SubmissionStatus; // Added this prop
     setSubmissionStatus: Dispatch<SetStateAction<SubmissionStatus>>;
 };
 
@@ -556,6 +556,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
          if (file.size > 10 * 1024 * 1024) { // 10MB
             handleFormChange(fieldId, { file: undefined, error: '文件大小不能超过 10MB' });
         } else {
+            // Clear previous errors when a new file is selected
             handleFormChange(fieldId, { file: file, error: undefined });
         }
     };
@@ -580,79 +581,102 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
         setSubmissionStatus('loading');
 
         try {
-            // 创建一个可变副本，用于在上传文件后更新其值
-            const formDataToSubmit: Record<string, unknown> = {};
-            for (const key in formData) {
-                formDataToSubmit[key] = formData[key];
-            }
+            const formDataToSubmit = { ...formData };
+            const uploadPromises: Promise<{ key: string; url: string; }>[] = [];
+            const fileFieldsToUpload: { key: string; file: File; }[] = [];
 
-            // 1. 查找并上传所有文件
+            // Step 1: Find all files that need to be uploaded
             for (const key in formData) {
                 const value = formData[key] as FileData;
-                
-                // 检查这个字段是否是文件并且有文件待上传
                 if (value && typeof value === 'object' && 'file' in value && value.file instanceof File) {
-                    const file = value.file;
-                    
-                    try {
-                        // 调用新的/api/upload端点
-                        const uploadResponse = await fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
-                            method: 'POST',
-                            body: file,
-                        });
-
-                        if (!uploadResponse.ok) {
-                             const errorText = await uploadResponse.text();
-                             throw new Error(`文件上传失败: ${errorText}`);
-                        }
-
-                        const newBlob = await uploadResponse.json();
-                        
-                        // 将formData中的文件对象替换为上传后的URL
-                        formDataToSubmit[key] = newBlob.url;
-
-                    } catch (uploadError) {
-                        console.error('上传文件时出错:', uploadError);
-                        // 如果某个文件上传失败, 更新该字段的错误状态并中止提交
-                        handleFormChange(key, { file: value.file, error: '上传失败, 请重试' });
-                        throw new Error('提交过程中文件上传失败。');
-                    }
+                    // Clear previous errors for this file before retrying
+                    handleFormChange(key, { file: value.file, error: undefined });
+                    fileFieldsToUpload.push({ key, file: value.file });
                 }
             }
+
+            // Step 2: Create an array of upload promises
+            fileFieldsToUpload.forEach(({ key, file }) => {
+                const uploadPromise = fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
+                    method: 'POST',
+                    body: file,
+                }).then(async (response) => {
+                    if (!response.ok) {
+                        // Try to parse error from server, provide fallback
+                        const errorData = await response.json().catch(() => ({}));
+                        const errorMessage = errorData.error || `HTTP error: ${response.status}`;
+                        return Promise.reject({ key, message: errorMessage });
+                    }
+                    const newBlob = await response.json();
+                    return { key, url: newBlob.url }; // Resolve with field key and URL
+                }).catch(networkError => {
+                    // Catch network errors
+                    return Promise.reject({ key, message: networkError.message || 'Network error' });
+                });
+                uploadPromises.push(uploadPromise);
+            });
             
-            // 2. 准备最终数据并提交到Notion
+            // Step 3: Execute all uploads in parallel and wait for all to complete
+            const uploadResults = await Promise.allSettled(uploadPromises);
+
+            let isUploadFailed = false;
+            uploadResults.forEach((result, index) => {
+                const fieldKey = fileFieldsToUpload[index].key;
+                if (result.status === 'fulfilled') {
+                    // On success, replace file object with the returned URL
+                    formDataToSubmit[fieldKey] = result.value.url;
+                } else {
+                    // On failure, mark as failed and update the specific field with the error
+                    isUploadFailed = true;
+                    const originalFile = (formData[fieldKey] as FileData).file;
+                    const errorMessage = result.reason?.message || 'Unknown upload error';
+                    console.error(`File upload failed for ${fieldKey}:`, result.reason);
+                    handleFormChange(fieldKey, { file: originalFile, error: errorMessage });
+                }
+            });
+
+            // Step 4: If any upload failed, abort the submission to Notion
+            if (isUploadFailed) {
+                throw new Error('One or more files failed to upload. Please check error messages below the files.');
+            }
+
+            // Step 5: If all uploads are successful, submit the form data to Notion
             const submissionId = uuidv4();
-            const response = await fetch('/api/submit', {
+            const notionResponse = await fetch('/api/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     id: submissionId,
                     services: selectedServiceIds.map(id => services.find(s => s.id === id)?.title),
-                    formData: formDataToSubmit, // 使用包含文件URL的新数据
+                    formData: formDataToSubmit,
                 }),
             });
 
-            if (!response.ok) {
-                const errorResult = await response.json();
-                throw new Error(errorResult.error || '网络响应错误');
+            if (!notionResponse.ok) {
+                const errorResult = await notionResponse.json();
+                throw new Error(errorResult.error || 'Network response was not ok during Notion submission.');
             }
             
-            const result = await response.json();
-            console.log('提交成功:', result);
+            const result = await notionResponse.json();
+            console.log('Submission successful:', result);
             setSubmissionStatus('success');
 
-            // 3. 成功后延迟关闭弹窗，以显示成功消息
+            // Step 6: Close the modal after a short delay to show success message
             setTimeout(() => {
                 onClose();
-                setSubmissionStatus('idle'); // 为下次打开弹窗重置状态
-            }, 2000); // 等待2秒
+                setSubmissionStatus('idle'); // Reset status for the next time
+            }, 2000);
 
         } catch (error) {
-            console.error('提交失败:', error);
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+            console.error('Submission failed:', errorMessage);
             setSubmissionStatus('error');
-            // 5秒后自动隐藏错误消息，方便用户操作
+            
+            // Hide the general error message after 5 seconds to let user see specific file errors
             setTimeout(() => {
-                setSubmissionStatus('idle');
+                if(submissionStatus !== 'loading') { // Prevent hiding if a new submission starts
+                   setSubmissionStatus('idle');
+                }
             }, 5000);
         }
     };
@@ -664,7 +688,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
         const { Component, id, ...props } = field;
         const value = formData[id];
         
-        // --- 特殊字段渲染逻辑 ---
+        // --- Special field rendering logic ---
         if (id === 'ha_s3_familyHistory') {
              const currentValues = (value as string[]) || [];
              return(
@@ -736,7 +760,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
              )
         }
         
-        // --- 通用字段渲染 ---
+        // --- Generic field rendering ---
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} } | any) => handleFormChange(id, e.target ? e.target.value : e);
 
@@ -804,7 +828,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
 };
 
 
-// --- 核心动画背景组件 ---
+// --- Core Animated Background Component ---
 const FloatingPaths = ({ position }: { position: number }) => {
     const paths = Array.from({ length: 36 }, (_, i) => ({
         id: i,
@@ -833,7 +857,7 @@ const FloatingPaths = ({ position }: { position: number }) => {
     );
 }
 
-// --- 主要的 Apex 组件 ---
+// --- Main Apex Page Component ---
 export default function ApexPage() {
     const [selectedServices, setSelectedServices] = useState<string[]>([]);
     const [isModalOpen, setModalOpen] = useState(false);
@@ -928,7 +952,7 @@ export default function ApexPage() {
                         selectedServiceIds={selectedServices}
                         formData={formData}
                         setFormData={setFormData}
-                        submissionStatus={submissionStatus} // 核心修复 2: 将 state 传递给子组件
+                        submissionStatus={submissionStatus} // Core Fix 2: Pass state to child component
                         setSubmissionStatus={setSubmissionStatus}
                     />
                 )}

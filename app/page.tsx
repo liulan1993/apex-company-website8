@@ -157,7 +157,6 @@ const TextareaField: FC<{ label: string, placeholder?: string, value: string, on
 const TableField: FC<{ label: string, columns: Column[], value: any[], onChange: (value: any[]) => void }> = ({ label, columns, value = [], onChange }) => {
     const safeColumns = Array.isArray(columns) ? columns : [];
     
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const columnsString = JSON.stringify(safeColumns);
 
     useEffect(() => {
@@ -165,7 +164,8 @@ const TableField: FC<{ label: string, columns: Column[], value: any[], onChange:
             const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
             onChange([newRow]);
         }
-    }, [columnsString, value.length, onChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [columnsString, value.length]);
 
     const handleAddRow = () => {
         const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
@@ -532,7 +532,7 @@ const services: Service[] = [
 
 
 // --- 合并表单弹窗组件 ---
-const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, setSubmissionStatus }: { isOpen: boolean, onClose: () => void, selectedServiceIds: string[], formData: FormData, setFormData: Dispatch<SetStateAction<FormData>>, setSubmissionStatus: Dispatch<SetStateAction<string>> }) => {
+const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds: string[], formData: FormData, setFormData: Dispatch<SetStateAction<FormData>>, setSubmissionStatus: Dispatch<SetStateAction<string>> }> = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, setSubmissionStatus }) => {
     
     const handleFormChange = (fieldId: string, value: any) => {
         setFormData((prev: FormData) => ({...prev, [fieldId]: value}));
@@ -596,8 +596,12 @@ const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormDat
     const renderField = (field: Field) => {
         const { Component, id, ...props } = field;
         
-        // --- 特殊字段渲染逻辑 ---
-        if (id === 'ha_s3_familyHistory') {
+        if (id === 'ha_s3_familyHistory' || id === 'ha_s4_diagnosed') {
+            const detailsId = id === 'ha_s3_familyHistory' ? 'ha_s3_other_details' : 'ha_s4_other_details';
+            const cancerDetailsId = id === 'ha_s3_familyHistory' ? 'ha_s3_cancer_details' : undefined;
+            const cancerLabel = "癌症部位";
+            const otherLabel = "其他疾病史";
+
              return(
                  <div key={id}>
                     <CheckboxGroupField {...props} value={formData[id] || []} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -607,40 +611,20 @@ const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormDat
                         handleFormChange(id, newValues);
                     }}/>
                     <AnimatePresence>
-                        {formData[id]?.includes('cancer') && 
+                        {cancerDetailsId && formData[id]?.includes('cancer') && 
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label="癌症部位" placeholder="请填写癌症具体部位" value={formData['ha_s3_cancer_details'] || ''} onChange={(e) => handleFormChange('ha_s3_cancer_details', e.target.value)}/>
+                                <FormField label={cancerLabel} placeholder="请填写具体信息" value={formData[cancerDetailsId] || ''} onChange={(e) => handleFormChange(cancerDetailsId, e.target.value)}/>
                             </motion.div>
                         }
                     </AnimatePresence>
                     <AnimatePresence>
                         {formData[id]?.includes('other') && 
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label="其他疾病史" placeholder="请填写其他家族疾病史" value={formData['ha_s3_other_details'] || ''} onChange={(e) => handleFormChange('ha_s3_other_details', e.target.value)}/>
+                                <FormField label={otherLabel} placeholder="请填写具体信息" value={formData[detailsId] || ''} onChange={(e) => handleFormChange(detailsId, e.target.value)}/>
                             </motion.div>
                         }
                     </AnimatePresence>
                  </div>
-             )
-        }
-        
-        if (id === 'ha_s4_diagnosed') {
-             return (
-                 <div key={id}>
-                    <CheckboxGroupField {...props} value={formData[id] || []} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                         const { value, checked } = e.target;
-                         const currentValues = formData[id] || [];
-                         const newValues = checked ? [...currentValues, value] : currentValues.filter((v:string) => v !== value);
-                         handleFormChange(id, newValues);
-                    }}/>
-                    <AnimatePresence>
-                        {formData[id]?.includes('other') && 
-                            <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label="其他确诊病史" placeholder="请填写其他确诊病史" value={formData['ha_s4_other_details'] || ''} onChange={(e) => handleFormChange('ha_s4_other_details', e.target.value)}/>
-                            </motion.div>
-                        }
-                    </AnimatePresence>
-                </div>
              )
         }
         
@@ -659,13 +643,12 @@ const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormDat
              )
         }
         
-        // --- 通用字段渲染 ---
         const value = formData[id];
-        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, e.target.value);
-        const onMultiChange = (newValue: any) => handleFormChange(id, newValue);
+        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, (e.target as HTMLInputElement).value);
+        const onMultiChange = (newValue: any[]) => handleFormChange(id, newValue);
 
         if (Component === FileUploadField) {
-             return <FileUploadField key={id} {...props} onFileChange={(file: File) => handleFileChange(id, file)} fileError={formData[id]?.error}/>;
+             return <Component key={id} {...props} onFileChange={(file: File) => handleFileChange(id, file)} fileError={formData[id]?.error}/>;
         }
         if (Component === TableField || Component === DynamicPersonField) {
             return <Component key={id} {...props} value={value || []} onChange={onMultiChange} />;

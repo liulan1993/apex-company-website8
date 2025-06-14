@@ -12,7 +12,6 @@ type Field = BaseFieldProps & { Component: React.ElementType; [key: string]: unk
 
 type TableRow = Record<string, string>;
 type PersonData = Record<string, string>;
-// FileData 现在只包含 File 对象和可选的错误信息
 type FileData = { file?: File; error?: string };
 
 type FormData = Record<string, unknown>;
@@ -536,7 +535,18 @@ const services: Service[] = [
 
 
 // --- 合并表单弹窗组件 ---
-const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds: string[], formData: FormData, setFormData: Dispatch<SetStateAction<FormData>>, setSubmissionStatus: Dispatch<SetStateAction<SubmissionStatus>> }> = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, setSubmissionStatus }) => {
+// 核心修复 1: 为 UploadModal 的 props 添加 submissionStatus
+type UploadModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    selectedServiceIds: string[];
+    formData: FormData;
+    setFormData: Dispatch<SetStateAction<FormData>>;
+    submissionStatus: SubmissionStatus; // 添加这个 prop
+    setSubmissionStatus: Dispatch<SetStateAction<SubmissionStatus>>;
+};
+
+const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, submissionStatus, setSubmissionStatus }) => {
 
     const handleFormChange = (fieldId: string, value: unknown) => {
         setFormData((prev) => ({...prev, [fieldId]: value}));
@@ -918,6 +928,7 @@ export default function ApexPage() {
                         selectedServiceIds={selectedServices}
                         formData={formData}
                         setFormData={setFormData}
+                        submissionStatus={submissionStatus} // 核心修复 2: 将 state 传递给子组件
                         setSubmissionStatus={setSubmissionStatus}
                     />
                 )}

@@ -163,7 +163,7 @@ const TableField = ({ label, columns, value = [], onChange }: { label: string, c
             const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
             onChange([newRow]);
         }
-    }, [columnsString, value.length, onChange]);
+    }, [columnsString, value, onChange]);
 
     const handleAddRow = () => {
         const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
@@ -248,7 +248,6 @@ const DynamicPersonField = ({ title, personType, value = [], onChange, fieldSet,
                      <button type="button" onClick={() => handleRemove(index)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold text-lg">&times;</button>
                      {fieldSet.map(field => {
                          const {Component, id, ...props} = field;
-                         const fieldId = `${id}_${index}`;
                          return <Component key={id} {...props} value={personData[id] || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(index, id, e.target.value)} />
                      })}
                 </div>
@@ -539,7 +538,7 @@ const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormDat
     
     const handleFileChange = (fieldId: string, file: File) => {
          if (file.size > 10 * 1024 * 1024) { // 10MB
-            handleFormChange(fieldId, { ...formData[fieldId], error: '文件大小不能超过 10MB' });
+            handleFormChange(fieldId, { ...(formData[fieldId] || {}), error: '文件大小不能超过 10MB' });
         } else {
             handleFormChange(fieldId, { file: file, error: null });
         }
@@ -673,7 +672,7 @@ const UploadModal = ({ isOpen, onClose, selectedServiceIds, formData, setFormDat
             const onCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                 const { value: checkboxValue, checked } = e.target;
                 const currentValues = value || [];
-                const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter(v => v !== checkboxValue);
+                const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter((v:string) => v !== checkboxValue);
                 onMultiChange(newValues);
             };
             return <Component key={id} {...props} value={value || []} onChange={onCheckboxChange} />;
@@ -869,4 +868,3 @@ export default function ApexPage() {
         </div>
     );
 }
-

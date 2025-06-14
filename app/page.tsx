@@ -12,6 +12,7 @@ type Field = BaseFieldProps & { Component: React.ElementType; [key: string]: unk
 
 type TableRow = Record<string, string>;
 type PersonData = Record<string, string>;
+// FileData 现在只包含 File 对象和可选的错误信息
 type FileData = { file?: File; error?: string };
 
 type FormData = Record<string, unknown>;
@@ -106,7 +107,6 @@ const FileUploadField: FC<{ label: string; onFileChange: (file: File) => void; f
     );
 };
 
-// 修复点 2: 为选项文字添加明确的颜色
 const RadioGroupField: FC<{ label: string, name: string, options: Option[], value: string, onChange: (e: { target: {name: string, value: string} }) => void }> = ({ label, name, options, value, onChange }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
@@ -132,7 +132,6 @@ const RadioGroupField: FC<{ label: string, name: string, options: Option[], valu
     </div>
 );
 
-// 修复点 2: 为选项文字添加明确的颜色
 const CheckboxGroupField: FC<{ label: string, value: string[], onChange: (e: ChangeEvent<HTMLInputElement>) => void, options: Option[] }> = ({ label, value = [], onChange, options }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
@@ -281,7 +280,6 @@ const clientAgentFields: Field[] = [
     { id: 'nationality', label: '国籍', Component: FormField },
     { id: 'contactNumber', label: '联系号码', Component: FormField },
 ];
-
 const directorFields: Field[] = [
     { id: 'fullName', label: '全名 (包括任何别名)', Component: FormField },
     { id: 'idNumber', label: '身份证/护照号码', Component: FormField },
@@ -293,7 +291,6 @@ const directorFields: Field[] = [
     { id: 'contactNumber', label: '联系号码', Component: FormField },
     { id: 'email', label: '邮箱地址', Component: FormField },
 ];
-
 const shareholderFields: Field[] = [
     { id: 'fullName', label: '全名/公司名', Component: FormField },
     { id: 'idNumber', label: '身份证/护照号码/公司注册号(UEN)', Component: FormField },
@@ -306,7 +303,6 @@ const shareholderFields: Field[] = [
     { id: 'contactNumber', label: '联系号码', Component: FormField },
     { id: 'email', label: '邮箱地址', Component: FormField },
 ];
-
 const uboFields: Field[] = [
     { id: 'fullName', label: '全名 (包括任何别名)', Component: FormField },
     { id: 'idNumber', label: '身份证/护照号码', Component: FormField },
@@ -318,7 +314,6 @@ const uboFields: Field[] = [
     { id: 'dob', label: '出生日期', type: 'date', Component: FormField },
     { id: 'ownershipInfo', label: '请提供实际受益所有权的性质信息', placeholder: '例如: 拥有超过25%的所有权', Component: TextareaField },
 ];
-
 const contactFields: Field[] = [
     { id: 'name', label: '姓名', Component: FormField },
     { id: 'id', label: '新加坡身份证/护照号码', Component: FormField },
@@ -326,8 +321,6 @@ const contactFields: Field[] = [
     { id: 'officePhone', label: '办公电话号码', Component: FormField },
     { id: 'email', label: '电邮地址', Component: FormField },
 ];
-
-
 const services: Service[] = [
     {
         id: 'company-registration',
@@ -574,41 +567,83 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
     }, [selectedServiceIds]);
 
     const handleSubmit = async () => {
+        setSubmissionStatus('loading');
+
         try {
-            setSubmissionStatus('loading');
-            const submissionId = uuidv4();
-            const serializableFormData = Object.entries(formData).reduce((acc, [key, value]) => {
-                const fileData = value as FileData;
-                if (fileData && typeof fileData === 'object' && 'file' in fileData) {
-                    acc[key] = fileData.file?.name || 'File to be uploaded';
-                } else {
-                    acc[key] = value;
+            // 创建一个可变副本，用于在上传文件后更新其值
+            const formDataToSubmit: Record<string, unknown> = {};
+            for (const key in formData) {
+                formDataToSubmit[key] = formData[key];
+            }
+
+            // 1. 查找并上传所有文件
+            for (const key in formData) {
+                const value = formData[key] as FileData;
+                
+                // 检查这个字段是否是文件并且有文件待上传
+                if (value && typeof value === 'object' && 'file' in value && value.file instanceof File) {
+                    const file = value.file;
+                    
+                    try {
+                        // 调用新的/api/upload端点
+                        const uploadResponse = await fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
+                            method: 'POST',
+                            body: file,
+                        });
+
+                        if (!uploadResponse.ok) {
+                             const errorText = await uploadResponse.text();
+                             throw new Error(`文件上传失败: ${errorText}`);
+                        }
+
+                        const newBlob = await uploadResponse.json();
+                        
+                        // 将formData中的文件对象替换为上传后的URL
+                        formDataToSubmit[key] = newBlob.url;
+
+                    } catch (uploadError) {
+                        console.error('上传文件时出错:', uploadError);
+                        // 如果某个文件上传失败, 更新该字段的错误状态并中止提交
+                        handleFormChange(key, { file: value.file, error: '上传失败, 请重试' });
+                        throw new Error('提交过程中文件上传失败。');
+                    }
                 }
-                return acc;
-            }, {} as Record<string, unknown>);
-
-
+            }
+            
+            // 2. 准备最终数据并提交到Notion
+            const submissionId = uuidv4();
             const response = await fetch('/api/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     id: submissionId,
                     services: selectedServiceIds.map(id => services.find(s => s.id === id)?.title),
-                    formData: serializableFormData,
+                    formData: formDataToSubmit, // 使用包含文件URL的新数据
                 }),
             });
 
             if (!response.ok) {
-                throw new Error('网络响应错误');
+                const errorResult = await response.json();
+                throw new Error(errorResult.error || '网络响应错误');
             }
-
+            
             const result = await response.json();
-            setSubmissionStatus('success');
             console.log('提交成功:', result);
-            onClose();
+            setSubmissionStatus('success');
+
+            // 3. 成功后延迟关闭弹窗，以显示成功消息
+            setTimeout(() => {
+                onClose();
+                setSubmissionStatus('idle'); // 为下次打开弹窗重置状态
+            }, 2000); // 等待2秒
+
         } catch (error) {
-            setSubmissionStatus('error');
             console.error('提交失败:', error);
+            setSubmissionStatus('error');
+            // 5秒后自动隐藏错误消息，方便用户操作
+            setTimeout(() => {
+                setSubmissionStatus('idle');
+            }, 5000);
         }
     };
 
@@ -618,7 +653,8 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
     const renderField = (field: Field) => {
         const { Component, id, ...props } = field;
         const value = formData[id];
-
+        
+        // --- 特殊字段渲染逻辑 ---
         if (id === 'ha_s3_familyHistory') {
              const currentValues = (value as string[]) || [];
              return(
@@ -650,7 +686,6 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
                  </div>
              )
         }
-        
         if (id === 'ha_s4_diagnosed') {
              const currentValues = (value as string[]) || [];
              return (
@@ -675,7 +710,6 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
                 </div>
              )
         }
-        
         if (id === 'is_s1_visa') {
              const currentValue = value as string;
              return(
@@ -715,7 +749,6 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
     };
 
     return (
-        // 修复点 1: 优化背景遮罩效果
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -740,11 +773,19 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
                 </form>
 
                 <div className="mt-8 flex justify-end">
-                    <button onClick={onClose} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2">
+                    <button 
+                        onClick={onClose} 
+                        className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2"
+                        disabled={submissionStatus === 'loading'}
+                    >
                         取消
                     </button>
-                    <button onClick={handleSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                        提交
+                    <button 
+                        onClick={handleSubmit} 
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:bg-blue-400 disabled:cursor-wait"
+                        disabled={submissionStatus === 'loading'}
+                    >
+                        {submissionStatus === 'loading' ? '提交中...' : '提交'}
                     </button>
                 </div>
             </motion.div>
@@ -888,15 +929,16 @@ export default function ApexPage() {
                         initial={{ opacity: 0, y: 50 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 50 }}
-                        className="fixed bottom-10 right-10 p-4 rounded-lg shadow-lg text-white"
+                        transition={{ type: 'spring', damping: 20, stiffness: 200 }}
+                        className="fixed bottom-10 right-10 p-4 rounded-lg shadow-lg text-white z-50"
                         style={{
                             backgroundColor: submissionStatus === 'success' ? '#28a745' :
                                              submissionStatus === 'error' ? '#dc3545' : '#007bff'
                         }}
                     >
-                        {submissionStatus === 'loading' && '正在提交...'}
+                        {submissionStatus === 'loading' && '正在提交，请稍候...'}
                         {submissionStatus === 'success' && '提交成功！'}
-                        {submissionStatus === 'error' && '提交失败，请重试。'}
+                        {submissionStatus === 'error' && '提交失败，请检查表单或网络后重试。'}
                     </motion.div>
                 )}
             </AnimatePresence>

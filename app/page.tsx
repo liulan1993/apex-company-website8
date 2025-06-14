@@ -36,7 +36,7 @@ const SubHeader: FC<{ title: string }> = ({ title }) => (
     <h4 className="text-lg font-semibold text-gray-700 mt-6 mb-4">{title}</h4>
 );
 
-const FormField: FC<{ label: string, type?: string, placeholder?: string, value: string, onChange: (e: ChangeEvent<HTMLInputElement>) => void }> = ({ label, type = 'text', placeholder, value, onChange }) => (
+const FormField: FC<{ label: string; type?: string; placeholder?: string; value: string; onChange: (e: ChangeEvent<HTMLInputElement>) => void }> = ({ label, type = 'text', placeholder, value, onChange }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <input 
@@ -49,7 +49,7 @@ const FormField: FC<{ label: string, type?: string, placeholder?: string, value:
     </div>
 );
 
-const SelectField: FC<{ label: string, name: string, options: Option[], value: string, onChange: (e: ChangeEvent<HTMLSelectElement>) => void }> = ({ label, name, options, value, onChange }) => (
+const SelectField: FC<{ label: string; name: string; options: Option[]; value: string; onChange: (e: ChangeEvent<HTMLSelectElement>) => void }> = ({ label, name, options, value, onChange }) => (
      <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <select 
@@ -66,7 +66,7 @@ const SelectField: FC<{ label: string, name: string, options: Option[], value: s
 );
 
 
-const FileUploadField: FC<{ label: string, onFileChange: (file: File) => void, fileError?: string }> = ({ label, onFileChange, fileError }) => {
+const FileUploadField: FC<{ label: string; onFileChange: (file: File) => void; fileError?: string }> = ({ label, onFileChange, fileError }) => {
     const [fileName, setFileName] = useState('');
     const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -233,7 +233,7 @@ const DynamicPersonField: FC<{ title?: string, personType: string, value: any[],
         onChange(newValues);
     };
 
-    const handleChange = (index: number, fieldId: string, fieldValue: any) => {
+    const handleChange = (index: number, fieldId: string, fieldValue: string) => {
         const newValues = [...value];
         newValues[index] = { ...newValues[index], [fieldId]: fieldValue };
         onChange(newValues);
@@ -248,7 +248,7 @@ const DynamicPersonField: FC<{ title?: string, personType: string, value: any[],
                      <button type="button" onClick={() => handleRemove(index)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold text-lg">&times;</button>
                      {fieldSet.map(field => {
                          const {Component, id, ...props} = field;
-                         return <Component key={id} {...props} value={personData[id] || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(index, id, e.target.value)} />
+                         return <Component key={id} {...props} value={personData[id]} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(index, id, e.target.value)} />
                      })}
                 </div>
             ))}
@@ -593,10 +593,7 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
 
     const renderField = (field: Field) => {
         const { Component, id, ...props } = field;
-        const value = formData[id];
-        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, (e.target as HTMLInputElement).value);
-        const onMultiChange = (newValue: any[]) => handleFormChange(id, newValue);
-
+        
         // --- 特殊字段渲染逻辑 ---
         if (id === 'ha_s3_familyHistory') {
              return(
@@ -661,6 +658,10 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
         }
         
         // --- 通用字段渲染 ---
+        const value = formData[id];
+        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, (e.target as HTMLInputElement).value);
+        const onMultiChange = (newValue: any[]) => handleFormChange(id, newValue);
+
         if (Component === FileUploadField) {
              return <Component key={id} {...props} onFileChange={(file: File) => handleFileChange(id, file)} fileError={formData[id]?.error}/>;
         }

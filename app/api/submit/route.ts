@@ -79,9 +79,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, id: submissionId });
   } catch (error) {
-    // @ts-expect-error The 'message' property on 'error' is not guaranteed, but this is a reasonable fallback.
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
     console.error('API Error:', error);
+    // @ts-expect-error The 'message' property on 'error' is not guaranteed, but this is a reasonable fallback.
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

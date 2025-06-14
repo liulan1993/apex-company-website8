@@ -27,15 +27,15 @@ function cn(...inputs: (string | undefined | null | boolean | { [key: string]: b
 }
 
 // --- 表单组件定义 ---
-const SectionHeader = ({ title }: { title: string }) => (
+const SectionHeader: FC<{ title: string }> = ({ title }) => (
     <h3 className="text-xl font-semibold text-gray-800 border-b pb-2 mb-6 mt-6 first:mt-0">{title}</h3>
 );
 
-const SubHeader = ({ title }: { title: string }) => (
+const SubHeader: FC<{ title: string }> = ({ title }) => (
     <h4 className="text-lg font-semibold text-gray-700 mt-6 mb-4">{title}</h4>
 );
 
-const FormField = ({ label, type = 'text', placeholder, value, onChange }: { label: string, type?: string, placeholder?: string, value: string, onChange: (e: ChangeEvent<HTMLInputElement>) => void }) => (
+const FormField: FC<{ label: string, type?: string, placeholder?: string, value: string, onChange: (e: ChangeEvent<HTMLInputElement>) => void }> = ({ label, type = 'text', placeholder, value, onChange }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <input 
@@ -48,7 +48,7 @@ const FormField = ({ label, type = 'text', placeholder, value, onChange }: { lab
     </div>
 );
 
-const SelectField = ({ label, name, options, value, onChange }: { label: string, name: string, options: Option[], value: string, onChange: (e: ChangeEvent<HTMLSelectElement>) => void }) => (
+const SelectField: FC<{ label: string, name: string, options: Option[], value: string, onChange: (e: ChangeEvent<HTMLSelectElement>) => void }> = ({ label, name, options, value, onChange }) => (
      <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <select 
@@ -65,7 +65,7 @@ const SelectField = ({ label, name, options, value, onChange }: { label: string,
 );
 
 
-const FileUploadField = ({ label, onFileChange, fileError }: { label: string, onFileChange: (file: File) => void, fileError?: string }) => {
+const FileUploadField: FC<{ label: string, onFileChange: (file: File) => void, fileError?: string }> = ({ label, onFileChange, fileError }) => {
     const [fileName, setFileName] = useState('');
     const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -96,7 +96,7 @@ const FileUploadField = ({ label, onFileChange, fileError }: { label: string, on
     );
 };
 
-const RadioGroupField = ({ label, name, options, value, onChange }: { label: string, name: string, options: Option[], value: string, onChange: (e: { target: {name: string, value: string} }) => void }) => (
+const RadioGroupField: FC<{ label: string, name: string, options: Option[], value: string, onChange: (e: { target: {name: string, value: string} }) => void }> = ({ label, name, options, value, onChange }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <div className="flex items-center space-x-4 flex-wrap">
@@ -121,7 +121,7 @@ const RadioGroupField = ({ label, name, options, value, onChange }: { label: str
     </div>
 );
 
-const CheckboxGroupField = ({ label, value = [], onChange, options }: { label: string, value: string[], onChange: (e: ChangeEvent<HTMLInputElement>) => void, options: Option[] }) => (
+const CheckboxGroupField: FC<{ label: string, value: string[], onChange: (e: ChangeEvent<HTMLInputElement>) => void, options: Option[] }> = ({ label, value = [], onChange, options }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
@@ -141,7 +141,7 @@ const CheckboxGroupField = ({ label, value = [], onChange, options }: { label: s
 );
 
 
-const TextareaField = ({ label, placeholder, value, onChange }: { label: string, placeholder?: string, value: string, onChange: (e: ChangeEvent<HTMLTextAreaElement>) => void }) => (
+const TextareaField: FC<{ label: string, placeholder?: string, value: string, onChange: (e: ChangeEvent<HTMLTextAreaElement>) => void }> = ({ label, placeholder, value, onChange }) => (
     <div className="mb-4">
         <label className="block text-gray-700 text-sm font-bold mb-2 text-left">{label}</label>
         <textarea 
@@ -154,8 +154,10 @@ const TextareaField = ({ label, placeholder, value, onChange }: { label: string,
     </div>
 );
 
-const TableField = ({ label, columns, value = [], onChange }: { label: string, columns: Column[], value: any[], onChange: (value: any[]) => void }) => {
+const TableField: FC<{ label: string, columns: Column[], value: any[], onChange: (value: any[]) => void }> = ({ label, columns, value = [], onChange }) => {
     const safeColumns = Array.isArray(columns) ? columns : [];
+    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const columnsString = JSON.stringify(safeColumns);
 
     useEffect(() => {
@@ -163,7 +165,7 @@ const TableField = ({ label, columns, value = [], onChange }: { label: string, c
             const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
             onChange([newRow]);
         }
-    }, [columnsString, value, onChange]);
+    }, [columnsString, value.length, onChange]);
 
     const handleAddRow = () => {
         const newRow = safeColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
@@ -219,7 +221,7 @@ const TableField = ({ label, columns, value = [], onChange }: { label: string, c
     );
 };
 
-const DynamicPersonField = ({ title, personType, value = [], onChange, fieldSet, max }: { title?: string, personType: string, value: any[], onChange: (value: any[]) => void, fieldSet: any[], max?: number }) => {
+const DynamicPersonField: FC<{ title?: string, personType: string, value: any[], onChange: (value: any[]) => void, fieldSet: any[], max?: number }> = ({ title, personType, value = [], onChange, fieldSet, max }) => {
     
     const handleAdd = () => {
         if (!max || value.length < max) {

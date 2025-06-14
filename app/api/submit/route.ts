@@ -30,7 +30,7 @@ function formatDataToMarkdown(data: SubmissionBody): string {
     for (const key in data.formData) {
         const value = data.formData[key];
         
-        let label = formatLabel(key);
+        const label = formatLabel(key);
         
         md += `### ${label}\n\n`;
 
@@ -79,6 +79,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, id: submissionId });
   } catch (error) {
+    // @ts-expect-error
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
     console.error('API Error:', error);
     return NextResponse.json({ success: false, error: message }, { status: 500 });

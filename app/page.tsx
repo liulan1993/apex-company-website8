@@ -553,12 +553,10 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
     };
 
     const handleFileChange = (fieldId: string, file: File) => {
-         // Set a file size limit, for example, 700KB for Base64 compatibility with Vercel KV's 1MB limit.
-         const MAX_FILE_SIZE = 700 * 1024; // 700KB
+         const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
          if (file.size > MAX_FILE_SIZE) {
-            handleFormChange(fieldId, { file: undefined, error: `文件大小不能超过 ${MAX_FILE_SIZE / 1024}KB` });
+            handleFormChange(fieldId, { file: undefined, error: `文件大小不能超过 ${MAX_FILE_SIZE / 1024 / 1024}MB` });
         } else {
-            // Clear previous errors when a new valid file is selected
             handleFormChange(fieldId, { file: file, error: undefined });
         }
     };
@@ -584,62 +582,62 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
 
         try {
             const formDataToSubmit = { ...formData };
-            const conversionPromises: Promise<{ key: string; base64: string; }>[] = [];
-            const fileFieldsToConvert: { key: string; file: File; }[] = [];
+            const uploadPromises: Promise<{ key: string; url: string; }>[] = [];
+            const fileFieldsToUpload: { key: string; file: File; }[] = [];
 
-            // Helper function to convert a File to a Base64 string
-            const toBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = error => reject(error);
-            });
-
-            // Step 1: Find all files that need to be converted to Base64
+            // Step 1: Find all files that need to be uploaded
             for (const key in formData) {
                 const value = formData[key] as FileData;
                 if (value && typeof value === 'object' && 'file' in value && value.file instanceof File) {
-                    fileFieldsToConvert.push({ key, file: value.file });
+                    handleFormChange(key, { file: value.file, error: undefined });
+                    fileFieldsToUpload.push({ key, file: value.file });
                 }
             }
-            
-            // Step 2: Create an array of conversion promises
-            fileFieldsToConvert.forEach(({ key, file }) => {
-                const conversionPromise = toBase64(file).then(base64String => {
-                    return { key, base64: base64String };
-                }).catch(error => {
-                    return Promise.reject({ key, message: `无法读取文件: ${error.message}` });
+
+            // Step 2: Create an array of upload promises
+            fileFieldsToUpload.forEach(({ key, file }) => {
+                const uploadPromise = fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
+                    method: 'POST',
+                    body: file,
+                }).then(async (response) => {
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        const errorMessage = errorData.error || `HTTP error: ${response.status}`;
+                        return Promise.reject({ key, message: errorMessage });
+                    }
+                    const newBlob = await response.json();
+                    return { key, url: newBlob.url };
+                }).catch(networkError => {
+                    return Promise.reject({ key, message: networkError.message || '网络错误' });
                 });
-                conversionPromises.push(conversionPromise);
+                uploadPromises.push(uploadPromise);
             });
             
-            // Step 3: Execute all conversions in parallel
-            const conversionResults = await Promise.allSettled(conversionPromises);
+            // Step 3: Execute all uploads in parallel
+            const uploadResults = await Promise.allSettled(uploadPromises);
 
-            let isConversionFailed = false;
-            conversionResults.forEach((result, index) => {
-                const fieldKey = fileFieldsToConvert[index].key;
+            let isUploadFailed = false;
+            uploadResults.forEach((result, index) => {
+                const fieldKey = fileFieldsToUpload[index].key;
                 if (result.status === 'fulfilled') {
-                    // On success, replace file object with the Base64 data URL
-                    formDataToSubmit[fieldKey] = result.value.base64;
+                    formDataToSubmit[fieldKey] = result.value.url;
                 } else {
-                    // On failure, mark as failed and update the specific field with the error
-                    isConversionFailed = true;
+                    isUploadFailed = true;
                     const originalFile = (formData[fieldKey] as FileData).file;
-                    const errorMessage = result.reason?.message || '未知的文件转换错误';
-                    console.error(`File conversion failed for ${fieldKey}:`, result.reason);
+                    const errorMessage = result.reason?.message || '未知上传错误';
+                    console.error(`文件上传失败 ${fieldKey}:`, result.reason);
                     handleFormChange(fieldKey, { file: originalFile, error: errorMessage });
                 }
             });
 
-            // Step 4: If any conversion failed, abort the submission
-            if (isConversionFailed) {
-                throw new Error('一个或多个文件处理失败。');
+            // Step 4: If any upload failed, abort the submission
+            if (isUploadFailed) {
+                throw new Error('一个或多个文件上传失败，请检查文件下方的错误信息。');
             }
 
-            // Step 5: Submit the form data (now with Base64 strings for files) to the backend
+            // Step 5: If all uploads successful, submit form data to Redis
             const submissionId = uuidv4();
-            const response = await fetch('/api/submit', {
+            const redisResponse = await fetch('/api/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -649,16 +647,16 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
                 }),
             });
 
-            if (!response.ok) {
-                const errorResult = await response.json();
+            if (!redisResponse.ok) {
+                const errorResult = await redisResponse.json();
                 throw new Error(errorResult.error || '提交到服务器时网络响应错误。');
             }
             
-            const result = await response.json();
-            console.log('Submission successful:', result);
+            const result = await redisResponse.json();
+            console.log('提交成功:', result);
             setSubmissionStatus('success');
 
-            // Step 6: Close the modal after a short delay
+            // Step 6: Close modal after a short delay
             setTimeout(() => {
                 onClose();
                 setSubmissionStatus('idle');
@@ -666,7 +664,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : '发生未知错误。';
-            console.error('Submission failed:', errorMessage);
+            console.error('提交失败:', errorMessage);
             setSubmissionStatus('error');
             
             setTimeout(() => {
@@ -760,11 +758,18 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
         const onChangeHandler = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} } | string[] | TableRow[] | PersonData[]) => {
             if (Array.isArray(e)) {
                  handleFormChange(id, e);
-            } else if (e && 'target' in e) {
+            } else if (e && typeof e === 'object' && 'target' in e) {
                 handleFormChange(id, e.target.value);
             }
         };
         
+        // Spreading props directly is fine as long as they match the target component's expected props.
+        // We ensure a 'value' prop is always present.
+        const componentProps = {
+            ...props,
+            value: value, // Pass the value from formData
+            onChange: onChangeHandler // Pass the unified handler
+        }
 
         if (Component === FileUploadField) {
              return <Component key={id} {...props as {label: string}} onFileChange={(file: File) => handleFileChange(id, file)} fileError={(value as FileData)?.error}/>;
@@ -773,7 +778,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
             return <Component key={id} {...props as {label:string, columns: Column[]}} value={(value as TableRow[]) || []} onChange={onChangeHandler as (value: TableRow[]) => void} />;
         }
         if (Component === DynamicPersonField) {
-            return <Component key={id} {...props as {personType: string, fieldSet: Field[], max?: number}} value={(value as PersonData[]) || []} onChange={onChangeHandler as (value: PersonData[]) => void} />;
+            return <Component key={id} {...props as {title?: string, personType: string, fieldSet: Field[], max?: number}} value={(value as PersonData[]) || []} onChange={onChangeHandler as (value: PersonData[]) => void} />;
         }
         if (Component === CheckboxGroupField) {
             const onCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -784,8 +789,9 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
             };
             return <Component key={id} {...props as {label: string, options: Option[]}} value={(value as string[]) || []} onChange={onCheckboxChange} />;
         }
+        
         // Default case for FormField, TextareaField, SelectField, RadioGroupField
-        return <Component key={id} {...props as {}} value={(value as string) || ''} onChange={onChangeHandler} />;
+        return <Component key={id} {...componentProps} value={(value as string) || ''} />;
     };
 
     return (

@@ -10,16 +10,16 @@ interface SubmissionPayload {
     formData: Record<string, unknown>;
 }
 
-// Check if the necessary REST API environment variables for Vercel KV are present.
+// Check if the necessary environment variables for Vercel KV are present.
 // These are automatically set by Vercel when you connect a KV (Redis) database.
-if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-    throw new Error('Missing required Vercel KV REST API environment variables.');
+if (!process.env.KV_URL) {
+    throw new Error('Missing required Vercel KV environment variables.');
 }
 
-// Create a Redis client instance using the correct REST API URL and token.
+// Create a Redis client instance.
 const kv = createClient({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
+  url: process.env.KV_URL,
+  token: process.env.KV_TOKEN,
 });
 
 export async function POST(req: Request) {

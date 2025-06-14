@@ -22,7 +22,7 @@ function formatDataToMarkdown(data: SubmissionBody): string {
     md += `## 详细信息\n\n`;
 
     // 辅助函数，将驼峰或下划线命名转为正常标题
-    const formatLabel = (key: string) => {
+    const formatLabel = (key: string): string => {
         const withSpaces = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1');
         return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
     };
@@ -45,7 +45,7 @@ function formatDataToMarkdown(data: SubmissionBody): string {
                         md += '\n';
                     });
                 } else {
-                    md += value.map(item => `- ${item}`).join('\n') + '\n\n';
+                    md += value.map((item: string) => `- ${item}`).join('\n') + '\n\n';
                 }
             } else {
                  md += `(未提供)\n\n`;
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, id: submissionId });
   } catch (error) {
-    // @ts-expect-error
+    // @ts-expect-error The 'message' property on 'error' is not guaranteed, but this is a reasonable fallback.
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
     console.error('API Error:', error);
     return NextResponse.json({ success: false, error: message }, { status: 500 });

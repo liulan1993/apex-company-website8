@@ -1,6 +1,6 @@
 // 文件路径: app/api/submit/route.ts
 
-import { Client, isNotionClientError, isAPIResponseError } from '@notionhq/client';
+import { Client, isNotionClientError } from '@notionhq/client';
 import { NextResponse } from 'next/server';
 import { CreatePageParameters } from '@notionhq/client/build/src/api-endpoints';
 
@@ -98,8 +98,10 @@ export async function POST(req: Request) {
         // 核心修复: 修正 Notion API 的错误处理逻辑
         // ====================================================================
         if (isNotionClientError(error)) {
-            // 检查错误是否为 APIResponseError 来安全地访问 status 属性
-            const status = isAPIResponseError(error) ? error.status : 500;
+            // 使用 'in' 操作符安全地检查 error 对象上是否存在 status 属性
+            const status = 'status' in error && typeof error.status === 'number' 
+                ? error.status 
+                : 500;
             
             return NextResponse.json(
                 {

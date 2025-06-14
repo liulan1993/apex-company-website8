@@ -17,7 +17,7 @@ interface SubmissionPayload {
 }
 
 /**
- * 3. 创建一个类型安全的辅助函数来将表单数据转换为 Notion 页面属性 (无改动)
+ * 3. 创建一个类型安全的辅助函数来将表单数据转换为 Notion 页面属性
  */
 function buildNotionProperties(payload: SubmissionPayload): CreatePageParameters['properties'] {
     const { id, services, formData } = payload;
@@ -40,23 +40,27 @@ function buildNotionProperties(payload: SubmissionPayload): CreatePageParameters
         if (value === null || value === undefined || value === '') continue;
 
         let propertyName = key;
+        // 示例：将特定的表单字段ID映射到更友好的Notion列名
         if (key === 'reg_partA_entityName1') {
             propertyName = 'Company Name';
         }
         
-        // 文件上传后，URL会作为字符串处理，这里的逻辑可以正确处理
+        // 根据值的类型，格式化为Notion API接受的格式
         if (typeof value === 'string') {
+             // 对于文件，这里会收到一个URL字符串，可以直接存入rich_text
             properties[propertyName] = { rich_text: [{ text: { content: value } }] };
         } else if (typeof value === 'number') {
             properties[propertyName] = { number: value };
         } else if (typeof value === 'boolean') {
             properties[propertyName] = { checkbox: value };
         } else if (Array.isArray(value)) {
+            // 将数组（如多选框的值）转换为逗号分隔的字符串
             const content = value.map(item =>
                 typeof item === 'object' ? JSON.stringify(item) : String(item)
             ).join(', ');
             properties[propertyName] = { rich_text: [{ text: { content } }] };
         } else if (typeof value === 'object' && value !== null) {
+            // 将对象（如动态字段组）序列化为JSON字符串
             const content = JSON.stringify(value, null, 2);
             properties[propertyName] = { rich_text: [{ text: { content } }] };
         }
@@ -66,7 +70,7 @@ function buildNotionProperties(payload: SubmissionPayload): CreatePageParameters
 }
 
 
-// 4. 定义类型安全的 POST 请求处理程序 (已更新错误处理逻辑)
+// 4. 定义类型安全的 POST 请求处理程序
 export async function POST(req: Request) {
     if (!databaseId || !process.env.NOTION_API_KEY) {
         console.error("缺少 NOTION_API_KEY 或 NOTION_DATABASE_ID 环境变量。");
@@ -90,18 +94,22 @@ export async function POST(req: Request) {
     } catch (error: unknown) {
         console.error("API 提交错误:", error);
 
-        // 新增: 对 Notion API 的特定错误进行处理
+        // ====================================================================
+        // 核心修复: 修正 Notion API 的错误处理逻辑
+        // ====================================================================
         if (isNotionClientError(error)) {
-            const notionError = JSON.parse(error.body);
+            // NotionClientError 类型没有 'body' 属性。
+            // 错误信息可以直接从 error.code 和 error.message 获取。
             return NextResponse.json(
-                { 
-                    error: `Notion API 错误: ${notionError.message}`,
-                    details: notionError
+                {
+                    error: `Notion API 错误: ${error.message}`,
+                    code: error.code // 返回具体的 Notion 错误码以便调试
                 },
                 { status: error.status }
             );
         }
         
+        // 处理其他类型的未知错误
         const errorMessage = error instanceof Error ? error.message : "发生未知错误";
         return NextResponse.json({ error: `提交失败: ${errorMessage}` }, { status: 500 });
     }

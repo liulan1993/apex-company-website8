@@ -7,7 +7,8 @@ import { v4 as uuidv4 } from 'uuid';
 // --- 类型定义 ---
 type Option = { value: string; label: string };
 type Column = { key: string; header: string };
-type Field = { id: string; Component: FC<any>; label?: string; title?: string; [key: string]: any };
+interface BaseFieldProps { id: string; label?: string; title?: string; }
+type Field = BaseFieldProps & { Component: FC<any>; [key: string]: any };
 type Service = { id: string; title: string; fields: Field[] };
 type FormData = { [key: string]: any };
 
@@ -592,14 +593,12 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
 
     const renderField = (field: Field) => {
         const { Component, id, ...props } = field;
-        
-        // --- 特殊字段渲染逻辑 ---
-        if (id === 'ha_s3_familyHistory' || id === 'ha_s4_diagnosed') {
-            const detailsId = id === 'ha_s3_familyHistory' ? 'ha_s3_other_details' : 'ha_s4_other_details';
-            const cancerDetailsId = id === 'ha_s3_familyHistory' ? 'ha_s3_cancer_details' : undefined;
-            const cancerLabel = "癌症部位";
-            const otherLabel = "其他疾病史";
+        const value = formData[id];
+        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, (e.target as HTMLInputElement).value);
+        const onMultiChange = (newValue: any[]) => handleFormChange(id, newValue);
 
+        // --- 特殊字段渲染逻辑 ---
+        if (id === 'ha_s3_familyHistory') {
              return(
                  <div key={id}>
                     <CheckboxGroupField {...props} value={formData[id] || []} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -609,16 +608,16 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
                         handleFormChange(id, newValues);
                     }}/>
                     <AnimatePresence>
-                        {cancerDetailsId && formData[id]?.includes('cancer') && 
+                        {formData[id]?.includes('cancer') && 
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label={cancerLabel} placeholder="请填写具体信息" value={formData[cancerDetailsId] || ''} onChange={(e) => handleFormChange(cancerDetailsId, e.target.value)}/>
+                                <FormField label="癌症部位" placeholder="请填写癌症具体部位" value={formData['ha_s3_cancer_details'] || ''} onChange={(e) => handleFormChange('ha_s3_cancer_details', e.target.value)}/>
                             </motion.div>
                         }
                     </AnimatePresence>
                     <AnimatePresence>
                         {formData[id]?.includes('other') && 
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
-                                <FormField label={otherLabel} placeholder="请填写具体信息" value={formData[detailsId] || ''} onChange={(e) => handleFormChange(detailsId, e.target.value)}/>
+                                <FormField label="其他疾病史" placeholder="请填写其他家族疾病史" value={formData['ha_s3_other_details'] || ''} onChange={(e) => handleFormChange('ha_s3_other_details', e.target.value)}/>
                             </motion.div>
                         }
                     </AnimatePresence>
@@ -626,10 +625,30 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
              )
         }
         
+        if (id === 'ha_s4_diagnosed') {
+             return (
+                 <div key={id}>
+                    <CheckboxGroupField {...props} value={formData[id] || []} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                         const { value, checked } = e.target;
+                         const currentValues = formData[id] || [];
+                         const newValues = checked ? [...currentValues, value] : currentValues.filter((v:string) => v !== value);
+                         handleFormChange(id, newValues);
+                    }}/>
+                    <AnimatePresence>
+                        {formData[id]?.includes('other') && 
+                            <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
+                                <FormField label="其他确诊病史" placeholder="请填写其他确诊病史" value={formData['ha_s4_other_details'] || ''} onChange={(e) => handleFormChange('ha_s4_other_details', e.target.value)}/>
+                            </motion.div>
+                        }
+                    </AnimatePresence>
+                </div>
+             )
+        }
+        
         if (id === 'is_s1_visa') {
              return(
                  <div key={id}>
-                    <SelectField {...props} value={formData[id] || ''} onChange={(e) => handleFormChange(id, e.target.value)}/>
+                    <SelectField {...props} value={formData[id] || ''} onChange={(e: ChangeEvent<HTMLSelectElement>) => handleFormChange(id, e.target.value)}/>
                     <AnimatePresence>
                         {formData[id] === 'yes' &&
                             <motion.div initial={{opacity:0, height: 0}} animate={{opacity:1, height: 'auto'}} exit={{opacity:0, height: 0}}>
@@ -642,10 +661,6 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
         }
         
         // --- 通用字段渲染 ---
-        const value = formData[id];
-        const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} }) => handleFormChange(id, (e.target as HTMLInputElement).value);
-        const onMultiChange = (newValue: any[]) => handleFormChange(id, newValue);
-
         if (Component === FileUploadField) {
              return <Component key={id} {...props} onFileChange={(file: File) => handleFileChange(id, file)} fileError={formData[id]?.error}/>;
         }
@@ -656,7 +671,7 @@ const UploadModal: FC<{ isOpen: boolean, onClose: () => void, selectedServiceIds
             const onCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                 const { value: checkboxValue, checked } = e.target;
                 const currentValues: string[] = value || [];
-                const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter((v:string) => v !== checkboxValue);
+                const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter(v => v !== checkboxValue);
                 onMultiChange(newValues);
             };
             return <Component key={id} {...props} value={value || []} onChange={onCheckboxChange} />;

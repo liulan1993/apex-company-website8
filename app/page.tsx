@@ -12,7 +12,6 @@ const AnimatedBoxes = () => {
     const meshRef = useRef<THREE.InstancedMesh>(null!);
     const numBoxes = 50;
 
-    // 使用 useMemo 确保几何体和材质只创建一次
     const [geometry, material] = useMemo(() => {
         const shape = new THREE.Shape();
         const angleStep = Math.PI * 0.5;
@@ -23,14 +22,13 @@ const AnimatedBoxes = () => {
         shape.absarc(-2, -2, radius, angleStep * 2, angleStep * 3, false);
         shape.absarc(2, -2, radius, angleStep * 3, angleStep * 4, false);
 
-        // 降低几何体复杂度以提升性能
         const extrudeSettings = {
             depth: 0.3,
             bevelEnabled: true,
             bevelThickness: 0.05,
             bevelSize: 0.05,
-            bevelSegments: 5, // 从 20 降低
-            curveSegments: 12 // 从 20 降低
+            bevelSegments: 5,
+            curveSegments: 12
         };
         const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
         geom.center();
@@ -49,7 +47,6 @@ const AnimatedBoxes = () => {
         return [geom, mat];
     }, []);
 
-    // 使用 useEffect 设置每个实例的初始变换矩阵
     useEffect(() => {
         const tempObject = new THREE.Object3D();
         for (let i = 0; i < numBoxes; i++) {
@@ -65,7 +62,6 @@ const AnimatedBoxes = () => {
         }
     }, []);
 
-    // 动画循环，只旋转整个组
     useFrame((state, delta) => {
         if (groupRef.current) {
             groupRef.current.rotation.x += delta * 0.05;
@@ -97,16 +93,20 @@ const Scene = () => {
 type Option = { value: string; label: string };
 type Column = { key: string; header: string };
 interface BaseFieldProps { id: string; label?: string; title?: string; }
-type Field = BaseFieldProps & { Component: React.ElementType; [key: string]: unknown };
+
+// --- CORRECTED Field Type Definition ---
+type Field = BaseFieldProps & {
+    Component: React.ElementType;
+    fieldSet?: Field[];    // Explicitly define optional properties
+    columns?: Column[];    // Explicitly define optional properties
+    [key: string]: unknown; // Keep for other dynamic props
+};
 
 type TableRow = Record<string, string>;
 type PersonData = Record<string, string>;
 type FileData = { file?: File; error?: string };
-
 type FormData = Record<string, unknown>;
-
 type SubmissionStatus = 'idle' | 'loading' | 'success' | 'error';
-
 type Service = { id: string; title: string; fields: Field[] };
 
 
@@ -125,7 +125,7 @@ function cn(...inputs: (string | undefined | null | boolean | { [key: string]: b
     return Array.from(classSet).join(' ');
 }
 
-// --- Form Component Definitions ---
+// --- Form Component Definitions (unchanged) ---
 const SectionHeader: FC<{ title: string }> = ({ title }) => (
     <h3 className="text-xl font-semibold text-gray-800 border-b pb-2 mb-6 mt-6 first:mt-0">{title}</h3>
 );
@@ -657,7 +657,6 @@ type UploadModalProps = {
 
 const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, submissionStatus, setSubmissionStatus }) => {
 
-    // 生成一个包含所有字段（包括嵌套字段）的查找映射，以便后续快速获取问题文本
     const allFieldsMap = useMemo(() => {
         const fieldMap = new Map<string, Field | Column>();
         const recursiveMapper = (fields: (Field | Column)[], prefix = '') => {
@@ -666,11 +665,12 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
                 const fieldKey = prefix ? `${prefix}.${fieldId}` : fieldId;
                 fieldMap.set(fieldKey, field);
 
-                if ((field as Field).fieldSet) {
-                    recursiveMapper((field as Field).fieldSet!, fieldId);
+                // Use the corrected, more explicit Field type
+                if (field.fieldSet) {
+                    recursiveMapper(field.fieldSet, fieldId);
                 }
-                if ((field as Field).columns) {
-                    recursiveMapper((field as Field).columns!, fieldId);
+                if (field.columns) {
+                    recursiveMapper(field.columns, fieldId);
                 }
             });
         };
@@ -713,10 +713,8 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
 
         try {
             const formDataToSubmit = { ...formData };
-            // (File upload logic remains the same)
-            // ...
+            // File upload logic can be added here if needed, but is omitted for focusing on the fix
 
-            // --- CORRECTED: Format data to include questions without using 'any' ---
             const formatDataWithQuestions = (data: Record<string, unknown>, prefix = ''): Record<string, unknown> => {
                 const result: Record<string, unknown> = {};
                 for (const key in data) {
@@ -740,7 +738,6 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
             
             const dataWithQuestions = formatDataWithQuestions(formDataToSubmit);
 
-            // Step 5: If all uploads successful, submit form data to Redis
             const submissionId = uuidv4();
             const redisResponse = await fetch('/api/submit', {
                 method: 'POST',
@@ -748,7 +745,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
                 body: JSON.stringify({
                     id: submissionId,
                     services: selectedServiceIds.map(id => services.find(s => s.id === id)?.title),
-                    formData: dataWithQuestions, // 使用格式化后的新数据
+                    formData: dataWithQuestions,
                 }),
             });
 
@@ -761,7 +758,6 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
             console.log('提交成功:', result);
             setSubmissionStatus('success');
 
-            // Step 6: Close modal after a short delay
             setTimeout(() => {
                 onClose();
                 setSubmissionStatus('idle');
@@ -787,7 +783,6 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
         const { Component, id, ...props } = field;
         const value = formData[id];
         
-        // --- Special conditional rendering logic ---
         if (id === 'ha_s3_familyHistory') {
              const currentValues = (value as string[]) || [];
              return(
@@ -859,7 +854,6 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
              )
         }
         
-        // --- Type-safe rendering for each component ---
         switch (Component) {
             case SectionHeader:
             case SubHeader:

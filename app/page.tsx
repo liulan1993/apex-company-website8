@@ -716,20 +716,20 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
             // (File upload logic remains the same)
             // ...
 
-            // --- FIXED: Format data to include questions ---
-            const formatDataWithQuestions = (data: Record<string, any>, prefix = ''): Record<string, any> => {
-                const result: Record<string, any> = {};
+            // --- FIXED: Format data to include questions without using 'any' ---
+            const formatDataWithQuestions = (data: Record<string, unknown>, prefix = ''): Record<string, unknown> => {
+                const result: Record<string, unknown> = {};
                 for (const key in data) {
                     const answer = data[key];
                     const fullKey = prefix ? `${prefix}.${key}` : key;
                     const fieldDefinition = allFieldsMap.get(fullKey);
                     const question = (fieldDefinition as Field)?.label || (fieldDefinition as Field)?.title || (fieldDefinition as Column)?.header || key;
                     
-                    if (Array.isArray(answer) && typeof answer[0] === 'object' && answer[0] !== null) {
-                         // 递归处理嵌套数组（TableField, DynamicPersonField）
+                    if (Array.isArray(answer) && answer.length > 0 && typeof answer[0] === 'object' && answer[0] !== null) {
+                         const rows = answer as Record<string, unknown>[];
                          result[key] = {
                             question,
-                            answer: answer.map(row => formatDataWithQuestions(row, key))
+                            answer: rows.map(row => formatDataWithQuestions(row, key))
                          };
                     } else {
                         result[key] = { question, answer };

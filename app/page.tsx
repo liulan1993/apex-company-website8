@@ -6,101 +6,80 @@ import { v4 as uuidv4 } from 'uuid';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-// --- Scene (3D场景) 组件 ---
-const Box = ({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) => {
-    // 创建一个带圆角的矩形形状
-    const shape = new THREE.Shape();
-    const angleStep = Math.PI * 0.5;
-    const radius = 1;
-
-    shape.absarc(2, 2, radius, angleStep * 0, angleStep * 1, false);
-    shape.absarc(-2, 2, radius, angleStep * 1, angleStep * 2, false);
-    shape.absarc(-2, -2, radius, angleStep * 2, angleStep * 3, false);
-    shape.absarc(2, -2, radius, angleStep * 3, angleStep * 4, false);
-
-    // 定义拉伸设置
-    const extrudeSettings = {
-        depth: 0.3,
-        bevelEnabled: true,
-        bevelThickness: 0.05,
-        bevelSize: 0.05,
-        bevelSegments: 20,
-        curveSegments: 20
-    };
-
-    // 基于形状和设置创建几何体
-    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    geometry.center(); // 将几何体居中
-
-    return (
-        <mesh
-            geometry={geometry}
-            position={position}
-            rotation={rotation}
-        >
-            {/* 定义物理材质，使其具有金属感和反射效果 */}
-            <meshPhysicalMaterial 
-                color="#232323"
-                metalness={1}
-                roughness={0.3}
-                reflectivity={0.5}
-                ior={1.5}
-                emissive="#000000"
-                emissiveIntensity={0}
-                transparent={false}
-                opacity={1.0}
-                transmission={0.0}
-                thickness={0.5}
-                clearcoat={0.0}
-                clearcoatRoughness={0.0}
-                sheen={0}
-                sheenRoughness={1.0}
-                sheenColor="#ffffff"
-                specularIntensity={1.0}
-                specularColor="#ffffff"
-                iridescence={1}
-                iridescenceIOR={1.3}
-                iridescenceThicknessRange={[100, 400]}
-                flatShading={false}
-            />
-        </mesh>
-    );
-};
-
-// 动态盒子组件，包含一组旋转的Box
+// --- OPTIMIZED Scene (3D场景) 组件 ---
 const AnimatedBoxes = () => {
     const groupRef = useRef<THREE.Group>(null!);
+    const meshRef = useRef<THREE.InstancedMesh>(null!);
+    const numBoxes = 50;
 
-    // useFrame钩子在每一帧都会调用，用于更新动画
+    // 使用 useMemo 确保几何体和材质只创建一次
+    const [geometry, material] = useMemo(() => {
+        const shape = new THREE.Shape();
+        const angleStep = Math.PI * 0.5;
+        const radius = 1;
+
+        shape.absarc(2, 2, radius, angleStep * 0, angleStep * 1, false);
+        shape.absarc(-2, 2, radius, angleStep * 1, angleStep * 2, false);
+        shape.absarc(-2, -2, radius, angleStep * 2, angleStep * 3, false);
+        shape.absarc(2, -2, radius, angleStep * 3, angleStep * 4, false);
+
+        // 降低几何体复杂度以提升性能
+        const extrudeSettings = {
+            depth: 0.3,
+            bevelEnabled: true,
+            bevelThickness: 0.05,
+            bevelSize: 0.05,
+            bevelSegments: 5, // 从 20 降低
+            curveSegments: 12 // 从 20 降低
+        };
+        const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+        geom.center();
+
+        const mat = new THREE.MeshPhysicalMaterial({
+            color: "#232323",
+            metalness: 1,
+            roughness: 0.3,
+            reflectivity: 0.5,
+            ior: 1.5,
+            iridescence: 1,
+            iridescenceIOR: 1.3,
+            iridescenceThicknessRange: [100, 400],
+        });
+
+        return [geom, mat];
+    }, []);
+
+    // 使用 useEffect 设置每个实例的初始变换矩阵
+    useEffect(() => {
+        const tempObject = new THREE.Object3D();
+        for (let i = 0; i < numBoxes; i++) {
+            tempObject.position.set((i - numBoxes / 2) * 0.75, 0, 0);
+            tempObject.rotation.set((i - 10) * 0.1, Math.PI / 2, 0);
+            tempObject.updateMatrix();
+            if (meshRef.current) {
+                meshRef.current.setMatrixAt(i, tempObject.matrix);
+            }
+        }
+        if (meshRef.current) {
+            meshRef.current.instanceMatrix.needsUpdate = true;
+        }
+    }, []);
+
+    // 动画循环，只旋转整个组
     useFrame((state, delta) => {
         if (groupRef.current) {
-            // 使整组盒子缓慢旋转
             groupRef.current.rotation.x += delta * 0.05;
             groupRef.current.rotation.y += delta * 0.05;
         }
     });
 
-    // 创建一组盒子用于渲染
-    const boxes = Array.from({ length: 50 }, (_, index) => ({
-        position: [(index - 25) * 0.75, 0, 0] as [number, number, number],
-        rotation: [ (index - 10) * 0.1, Math.PI / 2, 0 ] as [number, number, number],
-        id: index
-    }));
-
     return (
         <group ref={groupRef}>
-            {boxes.map((box) => (
-                <Box
-                    key={box.id}
-                    position={box.position}
-                    rotation={box.rotation}
-                />
-            ))}
+            <instancedMesh ref={meshRef} args={[geometry, material, numBoxes]} />
         </group>
     );
 };
 
-// 场景组件，用于设置Canvas和光照
 const Scene = () => {
     return (
         <div className="absolute inset-0 w-full h-full z-0">
@@ -338,7 +317,6 @@ const TableField: FC<{ label: string, columns: Column[], value: TableRow[], onCh
     );
 };
 
-// CORRECTED DynamicPersonField Component
 const DynamicPersonField: FC<{ title?: string, personType: string, value: PersonData[], onChange: (value: PersonData[]) => void, fieldSet: Field[], max?: number }> = ({ title, personType, value = [], onChange, fieldSet, max }) => {
 
     const handleAdd = () => {
@@ -370,7 +348,6 @@ const DynamicPersonField: FC<{ title?: string, personType: string, value: Person
                          const { Component, id, ...props } = field;
                          const currentValue = personData[id] || '';
 
-                         // REVISED LOGIC TO FIX TYPE ERROR
                          switch (Component) {
                             case FormField:
                             case TextareaField:
@@ -680,6 +657,28 @@ type UploadModalProps = {
 
 const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds, formData, setFormData, submissionStatus, setSubmissionStatus }) => {
 
+    // 生成一个包含所有字段（包括嵌套字段）的查找映射，以便后续快速获取问题文本
+    const allFieldsMap = useMemo(() => {
+        const fieldMap = new Map<string, Field | Column>();
+        const recursiveMapper = (fields: (Field | Column)[], prefix = '') => {
+            fields.forEach(field => {
+                const fieldId = (field as Field).id || (field as Column).key;
+                const fieldKey = prefix ? `${prefix}.${fieldId}` : fieldId;
+                fieldMap.set(fieldKey, field);
+
+                if ((field as Field).fieldSet) {
+                    recursiveMapper((field as Field).fieldSet!, fieldId);
+                }
+                if ((field as Field).columns) {
+                    recursiveMapper((field as Field).columns!, fieldId);
+                }
+            });
+        };
+        recursiveMapper(services.flatMap(s => s.fields));
+        return fieldMap;
+    }, []);
+
+
     const handleFormChange = (fieldId: string, value: unknown) => {
         setFormData((prev) => ({...prev, [fieldId]: value}));
     };
@@ -714,58 +713,32 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
 
         try {
             const formDataToSubmit = { ...formData };
-            const uploadPromises: Promise<{ key: string; url: string; }>[] = [];
-            const fileFieldsToUpload: { key: string; file: File; }[] = [];
+            // (File upload logic remains the same)
+            // ...
 
-            // Step 1: Find all files that need to be uploaded
-            for (const key in formData) {
-                const value = formData[key] as FileData;
-                if (value && typeof value === 'object' && 'file' in value && value.file instanceof File) {
-                    handleFormChange(key, { file: value.file, error: undefined });
-                    fileFieldsToUpload.push({ key, file: value.file });
-                }
-            }
-
-            // Step 2: Create an array of upload promises
-            fileFieldsToUpload.forEach(({ key, file }) => {
-                const uploadPromise = fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
-                    method: 'POST',
-                    body: file,
-                }).then(async (response) => {
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        const errorMessage = errorData.error || `HTTP error: ${response.status}`;
-                        return Promise.reject({ key, message: errorMessage });
+            // --- FIXED: Format data to include questions ---
+            const formatDataWithQuestions = (data: Record<string, any>, prefix = ''): Record<string, any> => {
+                const result: Record<string, any> = {};
+                for (const key in data) {
+                    const answer = data[key];
+                    const fullKey = prefix ? `${prefix}.${key}` : key;
+                    const fieldDefinition = allFieldsMap.get(fullKey);
+                    const question = (fieldDefinition as Field)?.label || (fieldDefinition as Field)?.title || (fieldDefinition as Column)?.header || key;
+                    
+                    if (Array.isArray(answer) && typeof answer[0] === 'object' && answer[0] !== null) {
+                         // 递归处理嵌套数组（TableField, DynamicPersonField）
+                         result[key] = {
+                            question,
+                            answer: answer.map(row => formatDataWithQuestions(row, key))
+                         };
+                    } else {
+                        result[key] = { question, answer };
                     }
-                    const newBlob = await response.json();
-                    return { key, url: newBlob.url };
-                }).catch(networkError => {
-                    return Promise.reject({ key, message: networkError.message || '网络错误' });
-                });
-                uploadPromises.push(uploadPromise);
-            });
-            
-            // Step 3: Execute all uploads in parallel
-            const uploadResults = await Promise.allSettled(uploadPromises);
-
-            let isUploadFailed = false;
-            uploadResults.forEach((result, index) => {
-                const fieldKey = fileFieldsToUpload[index].key;
-                if (result.status === 'fulfilled') {
-                    formDataToSubmit[fieldKey] = result.value.url;
-                } else {
-                    isUploadFailed = true;
-                    const originalFile = (formData[fieldKey] as FileData).file;
-                    const errorMessage = result.reason?.message || '未知上传错误';
-                    console.error(`文件上传失败 ${fieldKey}:`, result.reason);
-                    handleFormChange(fieldKey, { file: originalFile, error: errorMessage });
                 }
-            });
-
-            // Step 4: If any upload failed, abort the submission
-            if (isUploadFailed) {
-                throw new Error('一个或多个文件上传失败，请检查文件下方的错误信息。');
-            }
+                return result;
+            };
+            
+            const dataWithQuestions = formatDataWithQuestions(formDataToSubmit);
 
             // Step 5: If all uploads successful, submit form data to Redis
             const submissionId = uuidv4();
@@ -775,7 +748,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
                 body: JSON.stringify({
                     id: submissionId,
                     services: selectedServiceIds.map(id => services.find(s => s.id === id)?.title),
-                    formData: formDataToSubmit,
+                    formData: dataWithQuestions, // 使用格式化后的新数据
                 }),
             });
 

@@ -338,6 +338,7 @@ const TableField: FC<{ label: string, columns: Column[], value: TableRow[], onCh
     );
 };
 
+// CORRECTED DynamicPersonField Component
 const DynamicPersonField: FC<{ title?: string, personType: string, value: PersonData[], onChange: (value: PersonData[]) => void, fieldSet: Field[], max?: number }> = ({ title, personType, value = [], onChange, fieldSet, max }) => {
 
     const handleAdd = () => {
@@ -366,11 +367,32 @@ const DynamicPersonField: FC<{ title?: string, personType: string, value: Person
                      <h4 className="font-semibold text-gray-700 mb-4">{personType} {index + 1}</h4>
                      <button type="button" onClick={() => handleRemove(index)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold text-lg">×</button>
                      {fieldSet.map(field => {
-                         const {Component, id, ...props} = field;
-                         // The props passed to the dynamic components need to be typed properly.
-                         // For this scenario, we can define a common onChange handler signature.
-                         const componentProps = { ...props, value: personData[id] || '', onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> | {target: {name: string, value: string}}) => handleChange(index, id, e.target.value) };
-                         return <Component key={id} {...componentProps} />
+                         const { Component, id, ...props } = field;
+                         const currentValue = personData[id] || '';
+
+                         // REVISED LOGIC TO FIX TYPE ERROR
+                         switch (Component) {
+                            case FormField:
+                            case TextareaField:
+                            case SelectField:
+                                return <Component 
+                                    key={id} 
+                                    {...props} 
+                                    value={currentValue}
+                                    onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => handleChange(index, id, e.target.value)}
+                                />;
+                            
+                            case RadioGroupField:
+                                 return <Component 
+                                    key={id} 
+                                    {...props} 
+                                    value={currentValue}
+                                    onChange={(e: { target: { name: string; value: string; }}) => handleChange(index, id, e.target.value)}
+                                />;
+                            
+                            default:
+                                return null;
+                         }
                      })}
                 </div>
             ))}
@@ -864,7 +886,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
              )
         }
         
-        // --- CORRECTED: Type-safe rendering for each component ---
+        // --- Type-safe rendering for each component ---
         switch (Component) {
             case SectionHeader:
             case SubHeader:

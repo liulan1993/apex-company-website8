@@ -1,8 +1,118 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, ChangeEvent, Dispatch, SetStateAction, FC } from 'react';
+import React, { useState, useMemo, useEffect, ChangeEvent, Dispatch, SetStateAction, FC, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
+import { Canvas, useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+
+// --- Scene (3D场景) 组件 ---
+const Box = ({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) => {
+    // 创建一个带圆角的矩形形状
+    const shape = new THREE.Shape();
+    const angleStep = Math.PI * 0.5;
+    const radius = 1;
+
+    shape.absarc(2, 2, radius, angleStep * 0, angleStep * 1, false);
+    shape.absarc(-2, 2, radius, angleStep * 1, angleStep * 2, false);
+    shape.absarc(-2, -2, radius, angleStep * 2, angleStep * 3, false);
+    shape.absarc(2, -2, radius, angleStep * 3, angleStep * 4, false);
+
+    // 定义拉伸设置
+    const extrudeSettings = {
+        depth: 0.3,
+        bevelEnabled: true,
+        bevelThickness: 0.05,
+        bevelSize: 0.05,
+        bevelSegments: 20,
+        curveSegments: 20
+    };
+
+    // 基于形状和设置创建几何体
+    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    geometry.center(); // 将几何体居中
+
+    return (
+        <mesh
+            geometry={geometry}
+            position={position}
+            rotation={rotation}
+        >
+            {/* 定义物理材质，使其具有金属感和反射效果 */}
+            <meshPhysicalMaterial 
+                color="#232323"
+                metalness={1}
+                roughness={0.3}
+                reflectivity={0.5}
+                ior={1.5}
+                emissive="#000000"
+                emissiveIntensity={0}
+                transparent={false}
+                opacity={1.0}
+                transmission={0.0}
+                thickness={0.5}
+                clearcoat={0.0}
+                clearcoatRoughness={0.0}
+                sheen={0}
+                sheenRoughness={1.0}
+                sheenColor="#ffffff"
+                specularIntensity={1.0}
+                specularColor="#ffffff"
+                iridescence={1}
+                iridescenceIOR={1.3}
+                iridescenceThicknessRange={[100, 400]}
+                flatShading={false}
+            />
+        </mesh>
+    );
+};
+
+// 动态盒子组件，包含一组旋转的Box
+const AnimatedBoxes = () => {
+    const groupRef = useRef<THREE.Group>(null!);
+
+    // useFrame钩子在每一帧都会调用，用于更新动画
+    useFrame((state, delta) => {
+        if (groupRef.current) {
+            // 使整组盒子缓慢旋转
+            groupRef.current.rotation.x += delta * 0.05;
+            groupRef.current.rotation.y += delta * 0.05;
+        }
+    });
+
+    // 创建一组盒子用于渲染
+    const boxes = Array.from({ length: 50 }, (_, index) => ({
+        position: [(index - 25) * 0.75, 0, 0] as [number, number, number],
+        rotation: [ (index - 10) * 0.1, Math.PI / 2, 0 ] as [number, number, number],
+        id: index
+    }));
+
+    return (
+        <group ref={groupRef}>
+            {boxes.map((box) => (
+                <Box
+                    key={box.id}
+                    position={box.position}
+                    rotation={box.rotation}
+                />
+            ))}
+        </group>
+    );
+};
+
+// 场景组件，用于设置Canvas和光照
+const Scene = () => {
+    return (
+        <div className="absolute inset-0 w-full h-full z-0">
+            <Canvas camera={{ position: [0, 0, 15], fov: 40 }}>
+                <ambientLight intensity={15} />
+                <directionalLight position={[10, 10, 5]} intensity={15} />
+                <AnimatedBoxes />
+            </Canvas>
+        </div>
+    );
+};
+
 
 // --- Type Definitions ---
 type Option = { value: string; label: string };
@@ -562,7 +672,7 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
     };
 
     const consolidatedFields = useMemo(() => {
-        const fieldMap = new Map();
+        const fieldMap = new Map<string, Field>();
         selectedServiceIds.forEach(serviceId => {
             const service = services.find(s => s.id === serviceId);
             if (service) {
@@ -682,14 +792,14 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
         const { Component, id, ...props } = field;
         const value = formData[id];
         
-        // --- Special field rendering logic ---
+        // --- Special conditional rendering logic ---
         if (id === 'ha_s3_familyHistory') {
              const currentValues = (value as string[]) || [];
              return(
                  <div key={id}>
                     <CheckboxGroupField
+                        {...props as { options: Option[] }}
                         label={field.label as string}
-                        options={field.options as Option[]}
                         value={currentValues}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             const { value: checkboxValue, checked } = e.target;
@@ -719,8 +829,8 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
              return (
                  <div key={id}>
                     <CheckboxGroupField
+                        {...props as { options: Option[] }}
                         label={field.label as string}
-                        options={field.options as Option[]}
                         value={currentValues}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                              const { value: checkboxValue, checked } = e.target;
@@ -754,44 +864,72 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
              )
         }
         
-        // --- Generic field rendering ---
-        const onChangeHandler = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | { target: {name: string, value: string} } | string[] | TableRow[] | PersonData[]) => {
-            if (Array.isArray(e)) {
-                 handleFormChange(id, e);
-            } else if (e && typeof e === 'object' && 'target' in e) {
-                handleFormChange(id, e.target.value);
-            }
-        };
-        
-        // Spreading props directly is fine as long as they match the target component's expected props.
-        // We ensure a 'value' prop is always present.
-        const componentProps = {
-            ...props,
-            value: value, // Pass the value from formData
-            onChange: onChangeHandler // Pass the unified handler
-        }
+        // --- CORRECTED: Type-safe rendering for each component ---
+        switch (Component) {
+            case SectionHeader:
+            case SubHeader:
+                return <Component key={id} {...props} />;
+            
+            case FormField:
+            case TextareaField:
+            case SelectField:
+                return <Component 
+                    key={id} 
+                    {...props} 
+                    value={(value as string) || ''} 
+                    onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => handleFormChange(id, e.target.value)}
+                />;
+            
+            case RadioGroupField:
+                 return <Component 
+                    key={id} 
+                    {...props} 
+                    value={(value as string) || ''} 
+                    onChange={(e: { target: { name: string; value: string; }}) => handleFormChange(id, e.target.value)}
+                />;
+            
+            case CheckboxGroupField:
+                return <Component 
+                    key={id}
+                    {...props as {label: string, options: Option[]}}
+                    value={(value as string[]) || []}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                        const { value: checkboxValue, checked } = e.target;
+                        const currentValues = (formData[id] as string[]) || [];
+                        const newValues = checked
+                            ? [...currentValues, checkboxValue]
+                            : currentValues.filter(v => v !== checkboxValue);
+                        handleFormChange(id, newValues);
+                    }}
+                />;
+            
+            case FileUploadField:
+                return <Component 
+                    key={id}
+                    {...props as { label: string }}
+                    onFileChange={(file: File) => handleFileChange(id, file)}
+                    fileError={(value as FileData)?.error}
+                />;
 
-        if (Component === FileUploadField) {
-             return <Component key={id} {...props as {label: string}} onFileChange={(file: File) => handleFileChange(id, file)} fileError={(value as FileData)?.error}/>;
+            case TableField:
+                return <Component 
+                    key={id}
+                    {...props as { label: string, columns: Column[] }}
+                    value={(value as TableRow[]) || []}
+                    onChange={(newValue: TableRow[]) => handleFormChange(id, newValue)}
+                />;
+
+            case DynamicPersonField:
+                 return <Component
+                    key={id}
+                    {...props as { title?: string, personType: string, fieldSet: Field[], max?: number }}
+                    value={(value as PersonData[]) || []}
+                    onChange={(newValue: PersonData[]) => handleFormChange(id, newValue)}
+                />;
+                
+            default:
+                return null;
         }
-        if (Component === TableField) {
-            return <Component key={id} {...props as {label:string, columns: Column[]}} value={(value as TableRow[]) || []} onChange={onChangeHandler as (value: TableRow[]) => void} />;
-        }
-        if (Component === DynamicPersonField) {
-            return <Component key={id} {...props as {title?: string, personType: string, fieldSet: Field[], max?: number}} value={(value as PersonData[]) || []} onChange={onChangeHandler as (value: PersonData[]) => void} />;
-        }
-        if (Component === CheckboxGroupField) {
-            const onCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                const { value: checkboxValue, checked } = e.target;
-                const currentValues: string[] = (value as string[]) || [];
-                const newValues = checked ? [...currentValues, checkboxValue] : currentValues.filter(v => v !== checkboxValue);
-                handleFormChange(id, newValues)
-            };
-            return <Component key={id} {...props as {label: string, options: Option[]}} value={(value as string[]) || []} onChange={onCheckboxChange} />;
-        }
-        
-        // Default case for FormField, TextareaField, SelectField, RadioGroupField
-        return <Component key={id} {...componentProps} value={(value as string) || ''} />;
     };
 
     return (
@@ -840,35 +978,6 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
 };
 
 
-// --- Core Animated Background Component ---
-const FloatingPaths = ({ position }: { position: number }) => {
-    const paths = Array.from({ length: 36 }, (_, i) => ({
-        id: i,
-        d: `M-${380 - i * 5 * position} -${189 + i * 6}C-${380 - i * 5 * position} -${189 + i * 6} -${312 - i * 5 * position} ${216 - i * 6} ${152 - i * 5 * position} ${343 - i * 6}C${616 - i * 5 * position} ${470 - i * 6} ${684 - i * 5 * position} ${875 - i * 6} ${684 - i * 5 * position} ${875 - i * 6}`,
-        width: 0.5 + i * 0.03,
-    }));
-
-    return (
-        <div className="absolute inset-0 pointer-events-none">
-            <svg className="w-full h-full text-slate-900" viewBox="0 0 696 316" fill="none">
-                <title>Floating Paths</title>
-                {paths.map((path) => (
-                    <motion.path
-                        key={path.id}
-                        d={path.d}
-                        stroke="currentColor"
-                        strokeWidth={path.width}
-                        strokeOpacity={0.1 + path.id * 0.03}
-                        initial={{ pathLength: 0.3, opacity: 0.6 }}
-                        animate={{ pathLength: 1, opacity: [0.3, 0.6, 0.3], pathOffset: [0, 1, 0] }}
-                        transition={{ duration: 20 + Math.random() * 10, repeat: Infinity, ease: "linear" }}
-                    />
-                ))}
-            </svg>
-        </div>
-    );
-}
-
 // --- Main Apex Page Component ---
 export default function ApexPage() {
     const [selectedServices, setSelectedServices] = useState<string[]>([]);
@@ -888,9 +997,11 @@ export default function ApexPage() {
     const words = title.split(" ");
 
     return (
-        <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-white py-20 px-4">
-            <FloatingPaths position={1} />
-            <FloatingPaths position={-1} />
+        <div 
+            className="relative min-h-screen w-full flex items-center justify-center overflow-hidden py-20 px-4"
+            style={{background: 'linear-gradient(to bottom right, #000, #1A2428)'}}
+        >
+            <Scene />
 
             <div className="relative z-10 container mx-auto px-2 md:px-6 flex flex-col items-center w-full">
                 <motion.div
@@ -908,7 +1019,7 @@ export default function ApexPage() {
                                         initial={{ y: 100, opacity: 0 }}
                                         animate={{ y: 0, opacity: 1 }}
                                         transition={{ delay: wordIndex * 0.1 + letterIndex * 0.03, type: "spring", stiffness: 150, damping: 25 }}
-                                        className="inline-block text-transparent bg-clip-text bg-gradient-to-r from-neutral-900 to-neutral-700/80"
+                                        className="inline-block text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 to-neutral-400/80"
                                     >
                                         {letter}
                                     </motion.span>
@@ -935,7 +1046,7 @@ export default function ApexPage() {
                                         "p-4 rounded-lg text-center font-semibold transition-all duration-300 transform hover:scale-105 shadow-md border text-sm sm:text-base",
                                         isSelected
                                             ? "bg-blue-600 text-white border-blue-700 shadow-lg"
-                                            : "bg-white/70 backdrop-blur-sm text-gray-800 border-gray-200/50 hover:bg-white"
+                                            : "bg-white/10 backdrop-blur-sm text-gray-200 border-gray-200/20 hover:bg-white/20"
                                     )}
                                 >
                                     {service.title}

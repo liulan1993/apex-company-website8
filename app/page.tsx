@@ -76,7 +76,10 @@ const AnimatedBoxes = () => {
     );
 };
 
-const Scene = () => {
+// --- SCENE COMPONENT WRAPPED WITH React.memo FOR PERFORMANCE OPTIMIZATION ---
+// 通过 React.memo 包装，避免在父组件状态变化（如点击按钮）时不必要地重新渲染这个重量级组件。
+// 这是解决点击卡顿问题的关键。
+const Scene = React.memo(() => {
     return (
         <div className="absolute inset-0 w-full h-full z-0">
             <Canvas camera={{ position: [0, 0, 15], fov: 40 }}>
@@ -86,7 +89,8 @@ const Scene = () => {
             </Canvas>
         </div>
     );
-};
+});
+Scene.displayName = 'Scene'; // For better debugging in React DevTools
 
 
 // --- Type Definitions ---
@@ -666,11 +670,11 @@ const UploadModal: FC<UploadModalProps> = ({ isOpen, onClose, selectedServiceIds
                 fieldMap.set(fieldKey, field);
 
                 // Use the corrected, more explicit Field type
-                if (field.fieldSet) {
-                    recursiveMapper(field.fieldSet, fieldId);
+                if ((field as Field).fieldSet) {
+                    recursiveMapper((field as Field).fieldSet!, fieldId);
                 }
-                if (field.columns) {
-                    recursiveMapper(field.columns, fieldId);
+                if ((field as Field).columns) {
+                    recursiveMapper((field as Field).columns!, fieldId);
                 }
             });
         };
@@ -1052,6 +1056,14 @@ export default function ApexPage() {
                         >
                             生成上传表单
                         </button>
+                        
+                        {/* --- ADDED HOME BUTTON (新增的返回主页按钮) --- */}
+                        <a 
+                          href="https://singapore.apex-elite-service.com/"
+                          className="mt-4 inline-block bg-gray-200/20 hover:bg-gray-200/30 backdrop-blur-sm text-gray-200 font-bold py-3 px-10 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105"
+                        >
+                            返回主页
+                        </a>
                     </div>
                 </motion.div>
             </div>

@@ -651,11 +651,11 @@ export default function ApexPage() {
                             );
                         })}
                     </div>
-                    <div className="text-center">
+                    <div className="flex justify-center items-center gap-4">
                         <button onClick={()=>{setFormData({});setModalOpen(true);}} disabled={selectedServices.length===0} className="bg-green-600 text-white font-bold py-3 px-10 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100">
                             生成上传表单
                         </button>
-                        <a href="https://singapore.apex-elite-service.com/" className="mt-4 inline-block bg-gray-200/20 hover:bg-gray-200/30 backdrop-blur-sm text-gray-200 font-bold py-3 px-10 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105">
+                        <a href="https://singapore.apex-elite-service.com/" className="inline-block bg-gray-200/20 hover:bg-gray-200/30 backdrop-blur-sm text-gray-200 font-bold py-3 px-10 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105">
                             返回主页
                         </a>
                     </div>
